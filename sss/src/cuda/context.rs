@@ -21,13 +21,9 @@ impl Gpu {
         let ctx = CudaContext::new(0)?;
         let stream = ctx.default_stream();
 
-        let ptx = std::fs::read_to_string("cuda/kernels/path_trace.ptx").map_err(|err| {
-            anyhow::anyhow!(
-                "Failed to read PTX file: {err}. Run `cargo build` first to compile CUDA kernels."
-            )
-        })?;
+        let ptx = include_str!(concat!(env!("OUT_DIR"), "/path_trace.ptx"));
 
-        let module = ctx.load_module(Ptx::from_src(&ptx))?;
+        let module = ctx.load_module(Ptx::from_src(ptx))?;
         let render_fn = module.load_function("render_kernel")?;
         let clear_fn = module.load_function("clear_accumulator")?;
 

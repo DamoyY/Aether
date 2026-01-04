@@ -14,7 +14,7 @@ use cudarc::driver::{
     CudaSlice, CudaStream,
 };
 
-use scene::voxel::Voxel;
+use scene::Voxel;
 
 use crate::ffi::{GpuRenderParams, GpuVoxelGridParams, Rgba};
 
@@ -151,9 +151,7 @@ impl GpuResources {
     pub(crate) fn new(
         stream: &Arc<CudaStream>,
         voxel_data: &[Voxel],
-        dim_x: u32,
-        dim_y: u32,
-        dim_z: u32,
+        voxel_params: &GpuVoxelGridParams,
         width: u32,
         height: u32,
     ) -> Result<Self> {
@@ -165,30 +163,26 @@ impl GpuResources {
             .checked_mul(height_usize)
             .ok_or_else(|| anyhow::anyhow!("pixel count overflow"))?;
 
-        let voxel_texture = VoxelTexture::new(voxel_data, dim_x, dim_y, dim_z)?;
+        let voxel_texture = VoxelTexture::new(
+            voxel_data,
+            voxel_params.dim_x,
+            voxel_params.dim_y,
+            voxel_params.dim_z,
+        )?;
         let framebuffer = stream.alloc_zeros::<Rgba>(pixel_count)?;
         let accumulator = stream.alloc_zeros::<Rgba>(pixel_count)?;
-        let voxel_params = stream.alloc_zeros::<GpuVoxelGridParams>(1)?;
+        let voxel_params_gpu = stream.clone_htod(&[*voxel_params])?;
         let render_params = stream.alloc_zeros::<GpuRenderParams>(1)?;
 
         Ok(Self {
             voxel_texture,
             framebuffer,
             accumulator,
-            voxel_params,
+            voxel_params: voxel_params_gpu,
             render_params,
             width,
             height,
         })
-    }
-
-    pub(crate) fn update_voxel_params(
-        &mut self,
-        stream: &Arc<CudaStream>,
-        params: &GpuVoxelGridParams,
-    ) -> Result<()> {
-        self.voxel_params = stream.clone_htod(&[*params])?;
-        Ok(())
     }
 
     pub(crate) fn update_render_params(

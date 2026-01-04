@@ -3,13 +3,13 @@ use core::ops::{Add as _, Div as _, Mul as _, Sub as _};
 use anyhow::Result;
 use cudarc::driver::{LaunchConfig, PushKernelArg as _};
 use glam::Vec3;
-use scene::config::Scene;
-use scene::voxel::Grid;
+use scene::SceneData;
 
 use crate::{
     config::Config,
     cuda::{context::Gpu, memory::GpuResources},
-    ffi::{GpuRenderParams, GpuVoxelGridParams},
+    ffi::GpuRenderParams,
+    ffi::GpuVoxelGridParams,
 };
 
 pub(crate) struct Camera {
@@ -45,7 +45,8 @@ pub(crate) struct Renderer {
     camera: Camera,
     light: PointLight,
     config: Config,
-    scene_config: Scene,
+    material: scene::Material,
+    background: [f32; 3],
     current_sample: u32,
 }
 fn aces_tonemap(x: f32) -> f32 {
@@ -84,31 +85,35 @@ fn f32_to_u8_clamped(value: f32) -> u8 {
     low
 }
 impl Renderer {
-    pub(crate) fn new(
-        config: Config,
-        scene_config: &Scene,
-        voxel_grid: &Grid,
-    ) -> Result<Self> {
+    pub(crate) fn new(config: Config, scene_data: &SceneData) -> Result<Self> {
         let ctx = Gpu::new()?;
+        let voxel_params = GpuVoxelGridParams {
+            dim_x: scene_data.dimensions[0],
+            dim_y: scene_data.dimensions[1],
+            dim_z: scene_data.dimensions[2],
+            voxel_size: scene_data.voxel_size,
+            origin_x: scene_data.origin[0],
+            origin_y: scene_data.origin[1],
+            origin_z: scene_data.origin[2],
+            _padding: 0,
+        };
         let resources = GpuResources::new(
             &ctx.stream,
-            &voxel_grid.data,
-            voxel_grid.config.dimensions[0],
-            voxel_grid.config.dimensions[1],
-            voxel_grid.config.dimensions[2],
+            &scene_data.voxels,
+            &voxel_params,
             config.render.width,
             config.render.height,
         )?;
         let camera = Camera::new(
-            Vec3::from_array(scene_config.camera.position),
-            Vec3::from_array(scene_config.camera.target),
-            Vec3::from_array(scene_config.camera.up),
-            scene_config.camera.fov,
+            Vec3::from_array(scene_data.camera.position),
+            Vec3::from_array(scene_data.camera.target),
+            Vec3::from_array(scene_data.camera.up),
+            scene_data.camera.fov,
         );
         let light = PointLight {
-            position: Vec3::from_array(scene_config.light.position),
-            color: Vec3::from_array(scene_config.light.color),
-            intensity: scene_config.light.intensity,
+            position: Vec3::from_array(scene_data.light.position),
+            color: Vec3::from_array(scene_data.light.color),
+            intensity: scene_data.light.intensity,
         };
         Ok(Self {
             ctx,
@@ -116,7 +121,8 @@ impl Renderer {
             camera,
             light,
             config,
-            scene_config: *scene_config,
+            material: scene_data.material,
+            background: scene_data.background,
             current_sample: 0,
         })
     }
@@ -144,19 +150,7 @@ impl Renderer {
         Ok(())
     }
 
-    pub(crate) fn render_progressive(&mut self, voxel_grid: &Grid) -> Result<()> {
-        let voxel_params = GpuVoxelGridParams {
-            dim_x: voxel_grid.config.dimensions[0],
-            dim_y: voxel_grid.config.dimensions[1],
-            dim_z: voxel_grid.config.dimensions[2],
-            voxel_size: voxel_grid.config.voxel_size,
-            origin_x: voxel_grid.config.origin.x,
-            origin_y: voxel_grid.config.origin.y,
-            origin_z: voxel_grid.config.origin.z,
-            _padding: 0,
-        };
-        self.resources
-            .update_voxel_params(&self.ctx.stream, &voxel_params)?;
+    pub(crate) fn render_progressive(&mut self) -> Result<()> {
         let block_size = (16_u32, 16_u32, 1_u32);
         let grid_size = (
             self.resources.width.div_ceil(16),
@@ -195,14 +189,14 @@ impl Renderer {
                 samples_per_pixel: 1,
                 current_sample: self.current_sample,
                 _pad5: 0,
-                sigma_a: self.scene_config.material.sigma_a,
+                sigma_a: self.material.sigma_a,
                 _pad6: 0.0,
-                sigma_s: self.scene_config.material.sigma_s,
-                anisotropy: self.scene_config.material.anisotropy,
-                ior: self.scene_config.material.ior,
+                sigma_s: self.material.sigma_s,
+                anisotropy: self.material.anisotropy,
+                ior: self.material.ior,
                 seed: rand::random(),
                 _pad7: [0; 2],
-                background: self.scene_config.background,
+                background: self.background,
                 _pad8: 0.0,
             };
             self.resources

@@ -10,12 +10,10 @@ use core::ops::{Div as _, Mul as _};
 
 use anyhow::Result;
 use config::Config;
-use glam::Vec3;
 use log::info;
 use pixels::{Pixels, SurfaceTexture};
 use render::Renderer;
-use scene::config::Scene;
-use scene::voxel::{fill_cube_voxels, Grid, GridConfig};
+use scene::SceneData;
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
@@ -26,19 +24,17 @@ use winit::{
 
 struct App {
     config: Config,
-    scene_config: Scene,
-    voxel_grid: Grid,
+    scene_data: Option<SceneData>,
     window: Option<Arc<Window>>,
     pixels: Option<Pixels<'static>>,
     renderer: Option<Renderer>,
 }
 
 impl App {
-    const fn new(config: Config, scene_config: Scene, voxel_grid: Grid) -> Self {
+    const fn new(config: Config, scene_data: SceneData) -> Self {
         Self {
             config,
-            scene_config,
-            voxel_grid,
+            scene_data: Some(scene_data),
             window: None,
             pixels: None,
             renderer: None,
@@ -83,15 +79,20 @@ impl ApplicationHandler for App {
             }
         };
 
-        let mut renderer =
-            match Renderer::new(self.config.clone(), &self.scene_config, &self.voxel_grid) {
-                Ok(rend) => rend,
-                Err(err) => {
-                    log::error!("Failed to create renderer: {err}");
-                    event_loop.exit();
-                    return;
-                }
-            };
+        let Some(scene_data) = self.scene_data.take() else {
+            log::error!("Scene data already consumed");
+            event_loop.exit();
+            return;
+        };
+
+        let mut renderer = match Renderer::new(self.config.clone(), &scene_data) {
+            Ok(rend) => rend,
+            Err(err) => {
+                log::error!("Failed to create renderer: {err}");
+                event_loop.exit();
+                return;
+            }
+        };
         if let Err(err) = renderer.clear_accumulator() {
             log::error!("Failed to clear accumulator: {err}");
             event_loop.exit();
@@ -144,7 +145,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 if renderer.sample_count() < renderer.target_samples() {
-                    if let Err(err) = renderer.render_progressive(&self.voxel_grid) {
+                    if let Err(err) = renderer.render_progressive() {
                         log::error!("Render error: {err}");
                         event_loop.exit();
                         return;
@@ -216,28 +217,14 @@ impl ApplicationHandler for App {
 fn main() -> Result<()> {
     env_logger::init();
 
-    let config = Config::load("config.yaml")?;
+    let config = Config::load("sss/sss.yaml")?;
     info!("Configuration loaded");
 
-    let scene_config = Scene::load(&config.scene_path)?;
-    info!("Scene configuration loaded");
-
-    let voxel_config = GridConfig {
-        dimensions: scene_config.voxel.dimensions,
-        voxel_size: scene_config.voxel.voxel_size,
-        origin: Vec3::from_array(scene_config.voxel.origin),
-    };
-    let mut voxel_grid = Grid::default();
-    voxel_grid.init(voxel_config);
-
-    fill_cube_voxels(&mut voxel_grid, Vec3::ZERO, 1.0);
-    info!(
-        "Voxel grid initialized: {:?}",
-        scene_config.voxel.dimensions
-    );
+    let scene_data = scene::generate(&config.scene_path)?;
+    info!("Scene generated: {:?}", scene_data.dimensions);
 
     let event_loop = EventLoop::new()?;
-    let mut app = App::new(config, scene_config, voxel_grid);
+    let mut app = App::new(config, scene_data);
 
     event_loop.run_app(&mut app)?;
 
