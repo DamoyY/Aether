@@ -1,0 +1,10 @@
+render:
+  width: 1280
+  height: 720
+  target_samples: 3000
+  samples_per_frame: 20
+
+window:
+  title: "Voxel SSS Renderer"
+
+scene_path: "scene/scene.yaml"

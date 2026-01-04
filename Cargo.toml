@@ -1,33 +1,15 @@
-[package]
-name = "voxel-sss"
-version = "0.0.0"
-edition = "2024"
-build = "build.rs"
+# ！该文件的内容未经允许禁止修改！
+[workspace]
+members = ["sss", "scene"]
+resolver = "3"
 
-[dependencies]
-cudarc = { version = "*", features = ["cuda-13000"] }
-winit = "*"
-pixels = "*"
-serde = { version = "*", features = ["derive"] }
-serde_yaml = "*"
-glam = "*"
-bytemuck = { version = "*", features = ["derive"] }
-anyhow = "*"
-log = "*"
-env_logger = "*"
-rand = "*"
-
-[build-dependencies]
-glob = "*"
-
-# --- 以下内容禁止修改 ---
 [profile.release]
 opt-level = 3
 lto = "fat"
 codegen-units = 1
 panic = "abort"
 
-[lints.rust]
+[workspace.lints.rust]
 keyword_idents = { level = "warn", priority = -1 }
 unsafe_code = "warn"
 unused_must_use = "warn"
@@ -44,7 +26,7 @@ bare_trait_objects = "warn"
 missing_docs = "allow"
 unsafe-code = "allow"
 
-[lints.clippy]
+[workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
@@ -86,4 +68,5 @@ self_named_module_files = "allow"
 field_scoped_visibility_modifiers = "allow"
 redundant_pub_crate = "allow"
 semicolon_outside_block = "allow"
-# ------
+exhaustive_structs = "allow"
+missing_errors_doc = "allow"

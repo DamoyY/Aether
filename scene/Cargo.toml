@@ -1,0 +1,15 @@
+[package]
+name = "scene"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+bytemuck = { version = "*", features = ["derive"] }
+cudarc = { version = "*", features = ["cuda-13000"] }
+glam = "*"
+serde = { version = "*", features = ["derive"] }
+serde_yaml = "*"
+anyhow = "*"
+
+[lints]
+workspace = true

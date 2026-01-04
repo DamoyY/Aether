@@ -1,0 +1,25 @@
+[package]
+name = "sss"
+version = "0.0.0"
+edition = "2024"
+build = "build.rs"
+
+[dependencies]
+scene = { path = "../scene" }
+cudarc = { version = "*", features = ["cuda-13000"] }
+winit = "*"
+pixels = "*"
+serde = { version = "*", features = ["derive"] }
+serde_yaml = "*"
+glam = "*"
+bytemuck = { version = "*", features = ["derive"] }
+anyhow = "*"
+log = "*"
+env_logger = "*"
+rand = "*"
+
+[build-dependencies]
+glob = "*"
+
+[lints]
+workspace = true

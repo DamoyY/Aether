@@ -1,3 +1,4 @@
-/target
+target/
+**/target/
 CLAUDE.md
-cuda/kernels/path_trace.ptx
+sss/cuda/kernels/path_trace.ptx

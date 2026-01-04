@@ -3,13 +3,15 @@ use core::ops::{Add as _, Div as _, Mul as _, Sub as _};
 use anyhow::Result;
 use cudarc::driver::{LaunchConfig, PushKernelArg as _};
 use glam::Vec3;
+use scene::config::Scene;
+use scene::voxel::Grid;
 
 use crate::{
     config::Config,
     cuda::{context::Gpu, memory::GpuResources},
     ffi::{GpuRenderParams, GpuVoxelGridParams},
-    voxel::VoxelGrid,
 };
+
 pub(crate) struct Camera {
     pub position: Vec3,
     pub forward: Vec3,
@@ -43,6 +45,7 @@ pub(crate) struct Renderer {
     camera: Camera,
     light: PointLight,
     config: Config,
+    scene_config: Scene,
     current_sample: u32,
 }
 fn aces_tonemap(x: f32) -> f32 {
@@ -81,7 +84,11 @@ fn f32_to_u8_clamped(value: f32) -> u8 {
     low
 }
 impl Renderer {
-    pub(crate) fn new(config: Config, voxel_grid: &VoxelGrid) -> Result<Self> {
+    pub(crate) fn new(
+        config: Config,
+        scene_config: &Scene,
+        voxel_grid: &Grid,
+    ) -> Result<Self> {
         let ctx = Gpu::new()?;
         let resources = GpuResources::new(
             &ctx.stream,
@@ -93,15 +100,15 @@ impl Renderer {
             config.render.height,
         )?;
         let camera = Camera::new(
-            Vec3::from_array(config.camera.position),
-            Vec3::from_array(config.camera.target),
-            Vec3::from_array(config.camera.up),
-            config.camera.fov,
+            Vec3::from_array(scene_config.camera.position),
+            Vec3::from_array(scene_config.camera.target),
+            Vec3::from_array(scene_config.camera.up),
+            scene_config.camera.fov,
         );
         let light = PointLight {
-            position: Vec3::from_array(config.light.position),
-            color: Vec3::from_array(config.light.color),
-            intensity: config.light.intensity,
+            position: Vec3::from_array(scene_config.light.position),
+            color: Vec3::from_array(scene_config.light.color),
+            intensity: scene_config.light.intensity,
         };
         Ok(Self {
             ctx,
@@ -109,6 +116,7 @@ impl Renderer {
             camera,
             light,
             config,
+            scene_config: *scene_config,
             current_sample: 0,
         })
     }
@@ -136,7 +144,7 @@ impl Renderer {
         Ok(())
     }
 
-    pub(crate) fn render_progressive(&mut self, voxel_grid: &VoxelGrid) -> Result<()> {
+    pub(crate) fn render_progressive(&mut self, voxel_grid: &Grid) -> Result<()> {
         let voxel_params = GpuVoxelGridParams {
             dim_x: voxel_grid.config.dimensions[0],
             dim_y: voxel_grid.config.dimensions[1],
@@ -187,14 +195,14 @@ impl Renderer {
                 samples_per_pixel: 1,
                 current_sample: self.current_sample,
                 _pad5: 0,
-                sigma_a: self.config.material.sigma_a,
+                sigma_a: self.scene_config.material.sigma_a,
                 _pad6: 0.0,
-                sigma_s: self.config.material.sigma_s,
-                anisotropy: self.config.material.anisotropy,
-                ior: self.config.material.ior,
+                sigma_s: self.scene_config.material.sigma_s,
+                anisotropy: self.scene_config.material.anisotropy,
+                ior: self.scene_config.material.ior,
                 seed: rand::random(),
                 _pad7: [0; 2],
-                background: self.config.scene.background,
+                background: self.scene_config.background,
                 _pad8: 0.0,
             };
             self.resources

@@ -14,10 +14,9 @@ use cudarc::driver::{
     CudaSlice, CudaStream,
 };
 
-use crate::{
-    ffi::{GpuRenderParams, GpuVoxelGridParams, Rgba},
-    voxel::Voxel,
-};
+use scene::voxel::Voxel;
+
+use crate::ffi::{GpuRenderParams, GpuVoxelGridParams, Rgba};
 
 pub(crate) struct VoxelTexture {
     array: CUarray,

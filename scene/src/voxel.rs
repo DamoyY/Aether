@@ -6,55 +6,67 @@ use glam::Vec3;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
-pub(crate) struct Voxel {
+pub struct Voxel {
     pub intensity: f32,
 }
 // SAFETY: Voxel is #[repr(C)] and contains only f32 which is valid for GPU transfer.
 unsafe impl DeviceRepr for Voxel {}
-#[derive(Clone, Debug)]
-pub(crate) struct VoxelGridConfig {
+
+#[derive(Clone, Copy, Debug)]
+pub struct GridConfig {
     pub dimensions: [u32; 3],
     pub voxel_size: f32,
     pub origin: Vec3,
 }
 
-pub(crate) struct VoxelGrid {
-    pub config: VoxelGridConfig,
+#[derive(Debug)]
+pub struct Grid {
+    pub config: GridConfig,
     pub data: Vec<Voxel>,
 }
 
-impl VoxelGrid {
-    pub(crate) fn new(config: VoxelGridConfig) -> Self {
+impl Default for Grid {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            config: GridConfig {
+                dimensions: [0; 3],
+                voxel_size: 0.0,
+                origin: Vec3::ZERO,
+            },
+            data: Vec::new(),
+        }
+    }
+}
+
+impl Grid {
+    #[inline]
+    pub fn init(&mut self, config: GridConfig) {
         let dim0 = usize::try_from(config.dimensions[0]).unwrap_or(usize::MAX);
         let dim1 = usize::try_from(config.dimensions[1]).unwrap_or(usize::MAX);
         let dim2 = usize::try_from(config.dimensions[2]).unwrap_or(usize::MAX);
         let size = dim0.saturating_mul(dim1).saturating_mul(dim2);
-        Self {
-            config,
-            data: vec![Voxel { intensity: 0.0 }; size],
-        }
+        self.config = config;
+        self.data = vec![Voxel { intensity: 0.0 }; size];
     }
 
     #[inline]
-    pub(crate) fn index(&self, coord_x: u32, coord_y: u32, coord_z: u32) -> usize {
+    pub fn set(&mut self, coord_x: u32, coord_y: u32, coord_z: u32, voxel: Voxel) {
         let dims = &self.config.dimensions;
-        let idx = coord_z
+        let raw_idx = coord_z
             .saturating_mul(dims[1])
             .saturating_mul(dims[0])
             .saturating_add(coord_y.saturating_mul(dims[0]))
             .saturating_add(coord_x);
-        usize::try_from(idx).unwrap_or(usize::MAX)
-    }
-
-    pub(crate) fn set(&mut self, coord_x: u32, coord_y: u32, coord_z: u32, voxel: Voxel) {
-        let idx = self.index(coord_x, coord_y, coord_z);
+        let idx = usize::try_from(raw_idx).unwrap_or(usize::MAX);
         if let Some(slot) = self.data.get_mut(idx) {
             *slot = voxel;
         }
     }
 }
 
-pub(crate) fn fill_cube_voxels(grid: &mut VoxelGrid, center: Vec3, half_size: f32) {
+#[inline]
+pub fn fill_cube_voxels(grid: &mut Grid, center: Vec3, half_size: f32) {
     let dims = grid.config.dimensions;
     let origin = grid.config.origin;
     let voxel_size = grid.config.voxel_size;
