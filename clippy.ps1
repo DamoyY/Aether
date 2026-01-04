@@ -1,0 +1,1 @@
+cmd /c '"F:\Program Files\Microsoft Visual Studio\18\Insiders\VC\Auxiliary\Build\vcvarsall.bat" x64 & set' |%{if($_ -match '(.+?)=(.*)'){[Environment]::SetEnvironmentVariable($matches[1], $matches[2])}};if($LASTEXITCODE){exit $LASTEXITCODE};cd F:\Downloads\electron\sss;cargo clippy;exit $LASTEXITCODE

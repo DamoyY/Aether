@@ -20,6 +20,12 @@ pub(crate) struct RenderConfig {
     pub height: u32,
     pub max_bounces: u32,
     pub target_samples: u32,
+    #[serde(default = "default_samples_per_frame")]
+    pub samples_per_frame: u32,
+}
+
+const fn default_samples_per_frame() -> u32 {
+    10
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

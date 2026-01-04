@@ -1,4 +1,4 @@
-use core::ops::{Div as _, Mul as _, Sub as _};
+use core::ops::{Add as _, Div as _, Mul as _, Sub as _};
 
 use anyhow::Result;
 use cudarc::driver::{LaunchConfig, PushKernelArg as _};
@@ -49,9 +49,21 @@ pub(crate) struct Renderer {
     current_sample: u32,
 }
 
+fn aces_tonemap(x: f32) -> f32 {
+    const ACES_A: f32 = 2.51;
+    const ACES_B: f32 = 0.03;
+    const ACES_C: f32 = 2.43;
+    const ACES_D: f32 = 0.59;
+    const ACES_E: f32 = 0.14;
+    let numerator = x.mul(x.mul(ACES_A).add(ACES_B));
+    let denominator = x.mul(x.mul(ACES_C).add(ACES_D)).add(ACES_E);
+    numerator.div(denominator).clamp(0.0, 1.0)
+}
+
 fn gamma_correct_channel(value: f32) -> u8 {
+    let tonemapped = aces_tonemap(value);
     let gamma = 1.0_f32.div(2.2);
-    let corrected = value.powf(gamma).clamp(0.0, 1.0).mul(255.0);
+    let corrected = tonemapped.powf(gamma).mul(255.0);
     f32_to_u8_clamped(corrected)
 }
 
@@ -140,47 +152,8 @@ impl Renderer {
             _padding: 0,
         };
 
-        let render_params = GpuRenderParams {
-            width: self.config.render.width,
-            height: self.config.render.height,
-            _pad0: [0; 2],
-
-            camera_pos: self.camera.position.to_array(),
-            _pad1: 0.0,
-            camera_forward: self.camera.forward.to_array(),
-            _pad2: 0.0,
-            camera_right: self.camera.right.to_array(),
-            _pad3: 0.0,
-            camera_up: self.camera.up.to_array(),
-            fov: self.camera.fov,
-
-            light_pos: self.light.position.to_array(),
-            _pad4: 0.0,
-            light_color: self.light.color.to_array(),
-            light_intensity: self.light.intensity,
-
-            max_bounces: self.config.render.max_bounces,
-            samples_per_pixel: 1,
-            current_sample: self.current_sample,
-            _pad5: 0,
-
-            sigma_a: self.config.material.sigma_a,
-            _pad6: 0.0,
-            sigma_s: self.config.material.sigma_s,
-            anisotropy: self.config.material.anisotropy,
-            ior: self.config.material.ior,
-
-            seed: rand::random(),
-            _pad7: [0; 2],
-
-            background: self.config.scene.background,
-            _pad8: 0.0,
-        };
-
         self.resources
             .update_voxel_params(&self.ctx.stream, &voxel_params)?;
-        self.resources
-            .update_render_params(&self.ctx.stream, &render_params)?;
 
         let block_size = (16_u32, 16_u32, 1_u32);
         let grid_size = (
@@ -195,16 +168,64 @@ impl Renderer {
             shared_mem_bytes: 0,
         };
 
-        let mut builder = self.ctx.stream.launch_builder(&self.ctx.render_fn);
-        builder.arg(&mut self.resources.framebuffer);
-        builder.arg(&mut self.resources.accumulator);
-        builder.arg(&self.resources.voxels);
-        builder.arg(&self.resources.voxel_params);
-        builder.arg(&self.resources.render_params);
-        // SAFETY: The kernel arguments match the expected types and the launch configuration is valid.
-        unsafe { builder.launch(cfg) }?;
+        let samples_per_frame = self.config.render.samples_per_frame;
+        let remaining = self.config.render.target_samples.saturating_sub(self.current_sample);
+        let batch_size = samples_per_frame.min(remaining);
+
+        for _ in 0..batch_size {
+            let render_params = GpuRenderParams {
+                width: self.config.render.width,
+                height: self.config.render.height,
+                _pad0: [0; 2],
+
+                camera_pos: self.camera.position.to_array(),
+                _pad1: 0.0,
+                camera_forward: self.camera.forward.to_array(),
+                _pad2: 0.0,
+                camera_right: self.camera.right.to_array(),
+                _pad3: 0.0,
+                camera_up: self.camera.up.to_array(),
+                fov: self.camera.fov,
+
+                light_pos: self.light.position.to_array(),
+                _pad4: 0.0,
+                light_color: self.light.color.to_array(),
+                light_intensity: self.light.intensity,
+
+                max_bounces: self.config.render.max_bounces,
+                samples_per_pixel: 1,
+                current_sample: self.current_sample,
+                _pad5: 0,
+
+                sigma_a: self.config.material.sigma_a,
+                _pad6: 0.0,
+                sigma_s: self.config.material.sigma_s,
+                anisotropy: self.config.material.anisotropy,
+                ior: self.config.material.ior,
+
+                seed: rand::random(),
+                _pad7: [0; 2],
+
+                background: self.config.scene.background,
+                _pad8: 0.0,
+            };
+
+            self.resources
+                .update_render_params(&self.ctx.stream, &render_params)?;
+
+            let mut builder = self.ctx.stream.launch_builder(&self.ctx.render_fn);
+            builder.arg(&mut self.resources.framebuffer);
+            builder.arg(&mut self.resources.accumulator);
+            builder.arg(&self.resources.voxels);
+            builder.arg(&self.resources.voxel_params);
+            builder.arg(&self.resources.render_params);
+            // SAFETY: The kernel arguments match the expected types and the launch configuration is valid.
+            unsafe { builder.launch(cfg) }?;
+
+            self.current_sample = self.current_sample.saturating_add(1);
+        }
+
         self.ctx.stream.synchronize()?;
-        self.current_sample = self.current_sample.saturating_add(1);
         Ok(())
     }
 
