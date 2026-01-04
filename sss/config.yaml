@@ -7,4 +7,4 @@ render:
 window:
   title: "Voxel SSS Renderer"
 
-scene_path: "scene/scene.yaml"
+scene_path: "../scene/scene.yaml"
