@@ -42,13 +42,4 @@ struct Ray
     float3 origin;
     float3 direction;
 };
-struct HitRecord
-{
-    float t;
-    float3 position;
-    float3 normal;
-    float voxel_value;
-    bool hit;
-    bool inside;
-};
 #endif

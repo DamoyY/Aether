@@ -20,157 +20,90 @@ bool ray_aabb_intersect(const Ray& ray, const float3& box_min, const float3& box
     return t_near <= t_far && t_far >= 0.0f;
 }
 
-__device__
-HitRecord ray_march_voxels(const Ray& ray, const Voxel* voxels,
-                           const VoxelGridParams& params, float max_dist) {
-    HitRecord hit;
-    hit.hit = false;
-
-    float3 box_min = make_float3(params.origin_x, params.origin_y, params.origin_z);
-    float3 box_max = box_min + make_float3(
-        params.dim_x * params.voxel_size,
-        params.dim_y * params.voxel_size,
-        params.dim_z * params.voxel_size
+__device__ __forceinline__
+float3 transmittance(float optical_depth, const float3& sigma_t) {
+    return make_float3(
+        expf(-sigma_t.x * optical_depth),
+        expf(-sigma_t.y * optical_depth),
+        expf(-sigma_t.z * optical_depth)
     );
+}
 
-    float t_near, t_far;
-    if (!ray_aabb_intersect(ray, box_min, box_max, t_near, t_far)) {
-        return hit;
+__device__
+float compute_optical_depth(const float3& start, const float3& end,
+                            const Voxel* voxels, const VoxelGridParams& params) {
+    float3 dir = end - start;
+    float dist = length(dir);
+    if (dist < 1e-6f) return 0.0f;
+
+    dir = dir / dist;
+
+    float step_size = params.voxel_size * 0.25f;
+    int num_steps = (int)ceilf(dist / step_size);
+    step_size = dist / (float)num_steps;
+
+    float optical_depth = 0.0f;
+    for (int i = 0; i < num_steps; i++) {
+        float t = (i + 0.5f) * step_size;
+        float3 pos = start + dir * t;
+        float density = sample_voxel_trilinear(voxels, pos.x, pos.y, pos.z, params);
+        optical_depth += fmaxf(density, 0.0f) * step_size;
     }
 
-    t_near = fmaxf(t_near, 0.001f);
-    t_far = fminf(t_far, max_dist);
+    return optical_depth;
+}
 
-    float step_size = params.voxel_size * 0.5f;
-    float t = t_near;
+__device__
+float get_max_density(const Voxel* voxels, const VoxelGridParams& params) {
+    return 1.0f;
+}
 
-    while (t < t_far) {
+__device__
+bool delta_tracking_sample(const Ray& ray, const Voxel* voxels,
+                           const VoxelGridParams& params,
+                           float sigma_t_max, float t_min, float t_max,
+                           curandState* state,
+                           float& sampled_t, float& sampled_density) {
+    float t = t_min;
+
+    while (t < t_max) {
+        float free_path = -logf(1.0f - random_float(state) + 1e-10f) / sigma_t_max;
+        t += free_path;
+
+        if (t >= t_max) {
+            return false;
+        }
+
         float3 pos = ray.origin + ray.direction * t;
         float density = sample_voxel_trilinear(voxels, pos.x, pos.y, pos.z, params);
 
-        if (density > 0.01f) {
-            hit.hit = true;
-            hit.t = t;
-            hit.position = pos;
-            hit.voxel_value = density;
-
-            float eps = params.voxel_size * 0.5f;
-            hit.normal = normalize(make_float3(
-                sample_voxel_trilinear(voxels, pos.x + eps, pos.y, pos.z, params) -
-                sample_voxel_trilinear(voxels, pos.x - eps, pos.y, pos.z, params),
-                sample_voxel_trilinear(voxels, pos.x, pos.y + eps, pos.z, params) -
-                sample_voxel_trilinear(voxels, pos.x, pos.y - eps, pos.z, params),
-                sample_voxel_trilinear(voxels, pos.x, pos.y, pos.z + eps, params) -
-                sample_voxel_trilinear(voxels, pos.x, pos.y, pos.z - eps, params)
-            ));
-
-            if (dot(hit.normal, ray.direction) > 0) {
-                hit.normal = -hit.normal;
-                hit.inside = true;
-            } else {
-                hit.inside = false;
-            }
-
-            return hit;
+        float p_scatter = fmaxf(density, 0.0f);
+        if (random_float(state) < p_scatter) {
+            sampled_t = t;
+            sampled_density = density;
+            return true;
         }
-
-        t += step_size;
     }
 
-    return hit;
-}
-
-__device__ __forceinline__
-float3 transmittance(float distance, const float3& sigma_t) {
-    return make_float3(
-        expf(-sigma_t.x * distance),
-        expf(-sigma_t.y * distance),
-        expf(-sigma_t.z * distance)
-    );
-}
-
-__device__ __forceinline__
-float sample_free_path(curandState* state, float sigma_t) {
-    return -logf(1.0f - random_float(state) + 1e-10f) / sigma_t;
-}
-
-__device__
-float3 volume_scatter(Ray ray, const Voxel* voxels,
-                      const VoxelGridParams& voxel_params,
-                      const RenderParams& render_params,
-                      curandState* state, int max_scatter_events) {
-    float3 throughput = make_float3(1.0f, 1.0f, 1.0f);
-    float3 radiance = make_float3(0.0f, 0.0f, 0.0f);
-    float3 sigma_t = render_params.sigma_a + render_params.sigma_s;
-    float sigma_t_avg = (sigma_t.x + sigma_t.y + sigma_t.z) / 3.0f;
-
-    for (int scatter = 0; scatter < max_scatter_events; scatter++) {
-        float free_path = sample_free_path(state, sigma_t_avg);
-        float3 scatter_pos = ray.origin + ray.direction * free_path;
-
-        float density = sample_voxel_trilinear(
-            voxels, scatter_pos.x, scatter_pos.y, scatter_pos.z, voxel_params
-        );
-
-        if (density <= 0.0f) break;
-
-        throughput = throughput * transmittance(free_path, sigma_t);
-
-        float p_continue = max_component(throughput);
-        if (random_float(state) > p_continue) break;
-        throughput = throughput / p_continue;
-
-        float3 to_light = render_params.light_pos - scatter_pos;
-        float light_dist = length(to_light);
-        float3 light_dir = to_light / light_dist;
-
-        float3 light_transmittance = transmittance(light_dist * density * 0.5f, sigma_t);
-
-        float cos_angle = dot(-ray.direction, light_dir);
-        float phase = henyey_greenstein_phase(cos_angle, render_params.g);
-
-        float3 scatter_albedo = render_params.sigma_s / sigma_t;
-        radiance = radiance + throughput * scatter_albedo * phase *
-                   light_transmittance * render_params.light_color *
-                   render_params.light_intensity / (light_dist * light_dist);
-
-        ray.origin = scatter_pos;
-        ray.direction = sample_hg_phase(state, ray.direction, render_params.g);
-        throughput = throughput * scatter_albedo;
-    }
-
-    return radiance;
-}
-
-__device__ __forceinline__
-bool refract_ray(const float3& v, const float3& n, float ni_over_nt, float3& refracted) {
-    float3 uv = normalize(v);
-    float dt = dot(uv, n);
-    float discriminant = 1.0f - ni_over_nt * ni_over_nt * (1.0f - dt * dt);
-
-    if (discriminant > 0) {
-        refracted = ni_over_nt * (uv - n * dt) - n * sqrtf(discriminant);
-        return true;
-    }
     return false;
 }
 
-__device__ __forceinline__
-float fresnel_schlick(float cosine, float ior) {
-    float r0 = (1.0f - ior) / (1.0f + ior);
-    r0 = r0 * r0;
-    return r0 + (1.0f - r0) * powf(1.0f - cosine, 5.0f);
-}
-
 __device__
-float3 trace_path(Ray ray, const Voxel* voxels,
-                  const VoxelGridParams& voxel_params,
-                  const RenderParams& render_params,
-                  curandState* state) {
+float3 trace_volumetric_path(Ray ray, const Voxel* voxels,
+                              const VoxelGridParams& voxel_params,
+                              const RenderParams& render_params,
+                              curandState* state) {
     float3 color = make_float3(0.0f, 0.0f, 0.0f);
     float3 throughput = make_float3(1.0f, 1.0f, 1.0f);
     float3 sigma_t = render_params.sigma_a + render_params.sigma_s;
-    bool inside_medium = false;
+    float sigma_t_max = fmaxf(fmaxf(sigma_t.x, sigma_t.y), sigma_t.z);
+
+    float3 box_min = make_float3(voxel_params.origin_x, voxel_params.origin_y, voxel_params.origin_z);
+    float3 box_max = box_min + make_float3(
+        voxel_params.dim_x * voxel_params.voxel_size,
+        voxel_params.dim_y * voxel_params.voxel_size,
+        voxel_params.dim_z * voxel_params.voxel_size
+    );
 
     for (unsigned int bounce = 0; ; bounce++) {
         if (bounce > 0) {
@@ -183,46 +116,48 @@ float3 trace_path(Ray ray, const Voxel* voxels,
 
         if (bounce >= 10000) break;
 
-        HitRecord hit = ray_march_voxels(ray, voxels, voxel_params, 1000.0f);
+        float t_near, t_far;
+        if (!ray_aabb_intersect(ray, box_min, box_max, t_near, t_far)) {
+            color = color + throughput * render_params.background;
+            break;
+        }
+        t_near = fmaxf(t_near, 0.001f);
 
-        if (!hit.hit) {
+        float sampled_t, sampled_density;
+        bool scattered = delta_tracking_sample(
+            ray, voxels, voxel_params,
+            sigma_t_max, t_near, t_far,
+            state, sampled_t, sampled_density
+        );
+
+        if (!scattered) {
             color = color + throughput * render_params.background;
             break;
         }
 
-        if (inside_medium) {
-            throughput = throughput * transmittance(hit.t, sigma_t);
-        }
+        float3 scatter_pos = ray.origin + ray.direction * sampled_t;
 
-        float eta = hit.inside ? render_params.ior : (1.0f / render_params.ior);
-        float cos_theta = fminf(dot(-ray.direction, hit.normal), 1.0f);
-        float fresnel = fresnel_schlick(cos_theta, render_params.ior);
+        float3 to_light = render_params.light_pos - scatter_pos;
+        float light_dist = length(to_light);
+        float3 light_dir = to_light / light_dist;
 
-        if (random_float(state) < fresnel) {
-            float3 reflected = reflect(ray.direction, hit.normal);
-            ray.origin = hit.position + hit.normal * 0.001f;
-            ray.direction = reflected;
-        } else {
-            float3 refracted;
-            if (refract_ray(ray.direction, hit.normal, eta, refracted)) {
-                ray.origin = hit.position - hit.normal * 0.001f;
-                ray.direction = normalize(refracted);
+        float optical_depth = compute_optical_depth(
+            scatter_pos, render_params.light_pos,
+            voxels, voxel_params
+        );
+        float3 light_transmittance = transmittance(optical_depth, sigma_t);
 
-                if (!hit.inside) {
-                    inside_medium = true;
-                    float3 sss_contribution = volume_scatter(
-                        ray, voxels, voxel_params, render_params, state, 10
-                    );
-                    color = color + throughput * sss_contribution;
-                } else {
-                    inside_medium = false;
-                }
-            } else {
-                float3 reflected = reflect(ray.direction, hit.normal);
-                ray.origin = hit.position + hit.normal * 0.001f;
-                ray.direction = reflected;
-            }
-        }
+        float cos_angle = dot(-ray.direction, light_dir);
+        float phase = henyey_greenstein_phase(cos_angle, render_params.g);
+
+        float3 scatter_albedo = render_params.sigma_s / sigma_t;
+        color = color + throughput * scatter_albedo * phase *
+                light_transmittance * render_params.light_color *
+                render_params.light_intensity / (light_dist * light_dist);
+
+        ray.origin = scatter_pos;
+        ray.direction = sample_hg_phase(state, ray.direction, render_params.g);
+        throughput = throughput * scatter_albedo;
     }
 
     return color;
@@ -266,7 +201,7 @@ void render_kernel(float4* framebuffer, float4* accumulator,
         render_params.camera_up * ndc_y
     );
 
-    float3 color = trace_path(ray, voxels, voxel_params, render_params, &rand_state);
+    float3 color = trace_volumetric_path(ray, voxels, voxel_params, render_params, &rand_state);
 
     float4 acc = accumulator[pixel_idx];
     acc.x += color.x;
