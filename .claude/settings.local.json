@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(F:/Downloads/electron/sss/clippy.bat)"
+    ]
+  }
+}
