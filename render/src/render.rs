@@ -45,7 +45,7 @@ pub(crate) struct Renderer {
     camera: Camera,
     light: PointLight,
     config: Config,
-    material: scene_box::Material,
+    majorant: f32,
     background: [f32; 3],
     current_sample: u32,
 }
@@ -84,6 +84,20 @@ fn f32_to_u8_clamped(value: f32) -> u8 {
     }
     low
 }
+fn compute_majorant(voxels: &[scene_box::Voxel]) -> f32 {
+    voxels
+        .iter()
+        .filter(|voxel| voxel.intensity > 0.0)
+        .map(|voxel| {
+            let sigma_t = [
+                voxel.sigma_a[0].add(voxel.sigma_s[0]),
+                voxel.sigma_a[1].add(voxel.sigma_s[1]),
+                voxel.sigma_a[2].add(voxel.sigma_s[2]),
+            ];
+            sigma_t[0].max(sigma_t[1]).max(sigma_t[2])
+        })
+        .fold(0.0_f32, f32::max)
+}
 impl Renderer {
     pub(crate) fn new(config: Config, scene_data: &SceneData) -> Result<Self> {
         let ctx = Gpu::new()?;
@@ -111,13 +125,14 @@ impl Renderer {
             color: Vec3::from_array(scene_data.light.color),
             intensity: scene_data.light.intensity,
         };
+        let majorant = compute_majorant(&scene_data.voxels);
         Ok(Self {
             ctx,
             resources,
             camera,
             light,
             config,
-            material: scene_data.material,
+            majorant,
             background: scene_data.background,
             current_sample: 0,
         })
@@ -184,24 +199,17 @@ impl Renderer {
                 light_intensity: self.light.intensity,
                 samples_per_pixel: 1,
                 current_sample: self.current_sample,
-                _pad5: 0,
-                sigma_a: self.material.sigma_a,
-                _pad6: 0.0,
-                sigma_s: self.material.sigma_s,
-                anisotropy: self.material.anisotropy,
-                ior: self.material.ior,
+                majorant: self.majorant,
                 seed: rand::random(),
-                _pad7: [0; 2],
                 background: self.background,
-                _pad8: 0.0,
+                _pad5: 0.0,
             };
             self.resources
                 .update_render_params(&self.ctx.stream, &render_params)?;
-            let voxel_tex = self.resources.voxel_texture.texture();
             let mut builder = self.ctx.stream.launch_builder(&self.ctx.render_fn);
             builder.arg(&mut self.resources.framebuffer);
             builder.arg(&mut self.resources.accumulator);
-            builder.arg(&voxel_tex);
+            builder.arg(&self.resources.voxel_buffer);
             builder.arg(&self.resources.voxel_params);
             builder.arg(&self.resources.render_params);
             // SAFETY: The kernel arguments match the expected types and the launch configuration is valid.

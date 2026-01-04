@@ -14,34 +14,34 @@ __device__ __forceinline__ bool ray_aabb_intersect(const Ray &ray, const float3 
     t_far = fminf(fminf(t_max.x, t_max.y), t_max.z);
     return t_near <= t_far && t_far >= 0.0f;
 }
-__device__ bool delta_tracking_sample(const Ray &ray, cudaTextureObject_t voxel_tex,
+__device__ bool delta_tracking_sample(const Ray &ray, const Voxel *voxels,
                                       const VoxelGridParams &params,
-                                      float sigma_t_max, float t_min, float t_max,
+                                      float majorant, float t_min, float t_max,
                                       PCG32State *state,
-                                      float &sampled_t, float &sampled_density)
+                                      float &sampled_t, Voxel &sampled_voxel)
 {
     float t = t_min;
     while (t < t_max)
     {
-        float free_path = -logf(1.0f - random_float(state) + 1e-10f) / sigma_t_max;
+        float free_path = -logf(1.0f - random_float(state) + 1e-10f) / majorant;
         t += free_path;
         if (t >= t_max)
         {
             return false;
         }
         float3 pos = ray.origin + ray.direction * t;
-        float density = sample_voxel_texture(voxel_tex, pos.x, pos.y, pos.z, params);
-        float p_scatter = fmaxf(density, 0.0f);
-        if (random_float(state) < p_scatter)
+        Voxel voxel = sample_voxel(voxels, pos.x, pos.y, pos.z, params);
+        float density = fmaxf(voxel.intensity, 0.0f);
+        if (random_float(state) < density)
         {
             sampled_t = t;
-            sampled_density = density;
+            sampled_voxel = voxel;
             return true;
         }
     }
     return false;
 }
-__device__ float3 estimate_transmittance_ratio_tracking(float3 start, float3 end, cudaTextureObject_t voxel_tex, const VoxelGridParams &params, float3 sigma_t, float majorant, PCG32State *state)
+__device__ float3 estimate_transmittance_ratio_tracking(float3 start, float3 end, const Voxel *voxels, const VoxelGridParams &params, float majorant, PCG32State *state)
 {
     float3 dir = end - start;
     float dist = length(dir);
@@ -57,8 +57,12 @@ __device__ float3 estimate_transmittance_ratio_tracking(float3 start, float3 end
         if (t >= dist)
             break;
         float3 pos = start + dir * t;
-        float density = sample_voxel_texture(voxel_tex, pos.x, pos.y, pos.z, params);
-        density = fmaxf(density, 0.0f);
+        Voxel voxel = sample_voxel(voxels, pos.x, pos.y, pos.z, params);
+        float density = fmaxf(voxel.intensity, 0.0f);
+        float3 sigma_t = make_float3(
+            voxel.sigma_a[0] + voxel.sigma_s[0],
+            voxel.sigma_a[1] + voxel.sigma_s[1],
+            voxel.sigma_a[2] + voxel.sigma_s[2]);
         float ratio_x = fmaxf(1.0f - density * sigma_t.x / majorant, 0.0f);
         float ratio_y = fmaxf(1.0f - density * sigma_t.y / majorant, 0.0f);
         float ratio_z = fmaxf(1.0f - density * sigma_t.z / majorant, 0.0f);
@@ -73,15 +77,14 @@ __device__ float3 estimate_transmittance_ratio_tracking(float3 start, float3 end
     }
     return throughput;
 }
-__device__ float3 trace_volumetric_path(Ray ray, cudaTextureObject_t voxel_tex,
+__device__ float3 trace_volumetric_path(Ray ray, const Voxel *voxels,
                                         const VoxelGridParams &voxel_params,
                                         const RenderParams &render_params,
                                         PCG32State *state)
 {
     float3 color = make_float3(0.0f, 0.0f, 0.0f);
     float3 throughput = make_float3(1.0f, 1.0f, 1.0f);
-    float3 sigma_t = render_params.sigma_a + render_params.sigma_s;
-    float sigma_t_max = fmaxf(fmaxf(sigma_t.x, sigma_t.y), sigma_t.z);
+    float majorant = render_params.majorant;
     float3 box_min = make_float3(0.0f, 0.0f, 0.0f);
     float3 box_max = make_float3(
                                    voxel_params.dim_x * voxel_params.voxel_size,
@@ -105,39 +108,47 @@ __device__ float3 trace_volumetric_path(Ray ray, cudaTextureObject_t voxel_tex,
             break;
         }
         t_near = fmaxf(t_near, 0.0f);
-        float sampled_t, sampled_density;
+        float sampled_t;
+        Voxel sampled_voxel;
         bool scattered = delta_tracking_sample(
-            ray, voxel_tex, voxel_params,
-            sigma_t_max, t_near, t_far,
-            state, sampled_t, sampled_density);
+            ray, voxels, voxel_params,
+            majorant, t_near, t_far,
+            state, sampled_t, sampled_voxel);
         if (!scattered)
         {
             color = color + throughput * render_params.background;
             break;
         }
         float3 scatter_pos = ray.origin + ray.direction * sampled_t;
+        float3 sigma_s = make_float3(sampled_voxel.sigma_s[0], sampled_voxel.sigma_s[1], sampled_voxel.sigma_s[2]);
+        float3 sigma_t = make_float3(
+            sampled_voxel.sigma_a[0] + sampled_voxel.sigma_s[0],
+            sampled_voxel.sigma_a[1] + sampled_voxel.sigma_s[1],
+            sampled_voxel.sigma_a[2] + sampled_voxel.sigma_s[2]);
+        float g = sampled_voxel.anisotropy;
         float3 to_light = render_params.light_pos - scatter_pos;
         float light_dist = length(to_light);
         float3 light_dir = to_light / light_dist;
         float3 light_transmittance = estimate_transmittance_ratio_tracking(
             scatter_pos, render_params.light_pos,
-            voxel_tex, voxel_params,
-            sigma_t, sigma_t_max,
+            voxels, voxel_params,
+            majorant,
             state);
         float cos_angle = dot(-ray.direction, light_dir);
-        float phase = henyey_greenstein_phase(cos_angle, render_params.g);
-        float3 effective_weight = render_params.sigma_s / sigma_t_max;
+        float phase = henyey_greenstein_phase(cos_angle, g);
+        float sigma_t_max = fmaxf(fmaxf(sigma_t.x, sigma_t.y), sigma_t.z);
+        float3 effective_weight = sigma_s / sigma_t_max;
         color = color + throughput * effective_weight * phase *
                             light_transmittance * render_params.light_color *
                             render_params.light_intensity / (light_dist * light_dist);
         ray.origin = scatter_pos;
-        ray.direction = sample_hg_phase(state, ray.direction, render_params.g);
+        ray.direction = sample_hg_phase(state, ray.direction, g);
         throughput = throughput * effective_weight;
     }
     return color;
 }
 extern "C" __global__ void render_kernel(float4 *framebuffer, float4 *accumulator,
-                                         cudaTextureObject_t voxel_tex,
+                                         const Voxel *voxels,
                                          const VoxelGridParams *voxel_params_ptr,
                                          const RenderParams *render_params_ptr)
 {
@@ -163,7 +174,7 @@ extern "C" __global__ void render_kernel(float4 *framebuffer, float4 *accumulato
         render_params.camera_forward +
         render_params.camera_right * ndc_x +
         render_params.camera_up * ndc_y);
-    float3 color = trace_volumetric_path(ray, voxel_tex, voxel_params, render_params, &rand_state);
+    float3 color = trace_volumetric_path(ray, voxels, voxel_params, render_params, &rand_state);
     float4 acc = accumulator[pixel_idx];
     acc.x += color.x;
     acc.y += color.y;

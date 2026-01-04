@@ -13,6 +13,10 @@ use std::path::Path;
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct Voxel {
     pub intensity: f32,
+    pub sigma_a: [f32; 3],
+    pub sigma_s: [f32; 3],
+    pub anisotropy: f32,
+    pub ior: f32,
 }
 
 // SAFETY: Voxel is #[repr(C)] and contains only f32 which is valid for GPU transfer.
@@ -48,7 +52,6 @@ pub struct SceneData {
     pub voxel_size: f32,
     pub camera: Camera,
     pub light: Light,
-    pub material: Material,
     pub background: [f32; 3],
 }
 

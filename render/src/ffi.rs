@@ -14,6 +14,19 @@ unsafe impl DeviceRepr for Rgba {}
 unsafe impl ValidAsZeroBits for Rgba {}
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub(crate) struct GpuVoxel {
+    pub intensity: f32,
+    pub sigma_a: [f32; 3],
+    pub sigma_s: [f32; 3],
+    pub anisotropy: f32,
+    pub ior: f32,
+}
+// SAFETY: GpuVoxel is #[repr(C)] and contains only f32 fields which are valid for GPU transfer.
+unsafe impl DeviceRepr for GpuVoxel {}
+// SAFETY: GpuVoxel contains only f32 fields, zero-initialized values are valid.
+unsafe impl ValidAsZeroBits for GpuVoxel {}
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub(crate) struct GpuVoxelGridParams {
     pub dim_x: u32,
     pub dim_y: u32,
@@ -44,16 +57,10 @@ pub(crate) struct GpuRenderParams {
     pub light_intensity: f32,
     pub samples_per_pixel: u32,
     pub current_sample: u32,
-    pub _pad5: u32,
-    pub sigma_a: [f32; 3],
-    pub _pad6: f32,
-    pub sigma_s: [f32; 3],
-    pub anisotropy: f32,
-    pub ior: f32,
+    pub majorant: f32,
     pub seed: u32,
-    pub _pad7: [u32; 2],
     pub background: [f32; 3],
-    pub _pad8: f32,
+    pub _pad5: f32,
 }
 // SAFETY: GpuRenderParams is #[repr(C)] and contains only primitive types valid for GPU transfer.
 unsafe impl DeviceRepr for GpuRenderParams {}

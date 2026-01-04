@@ -1,5 +1,6 @@
 use core::ops::{Add as _, Div as _, Mul as _, Sub as _};
 
+use super::config::{GradientConfig, MaterialConfig};
 use crate::Voxel;
 
 fn index(coord_x: u32, coord_y: u32, coord_z: u32, dims: [u32; 3]) -> usize {
@@ -11,13 +12,30 @@ fn index(coord_x: u32, coord_y: u32, coord_z: u32, dims: [u32; 3]) -> usize {
     usize::try_from(raw_idx).unwrap_or(usize::MAX)
 }
 
+fn lerp(from: f32, to: f32, ratio: f32) -> f32 {
+    from.add(to.sub(from).mul(ratio))
+}
+
+fn lerp3(from: [f32; 3], to: [f32; 3], ratio: f32) -> [f32; 3] {
+    [
+        lerp(from[0], to[0], ratio),
+        lerp(from[1], to[1], ratio),
+        lerp(from[2], to[2], ratio),
+    ]
+}
+
 pub(super) fn generate(
     voxels: &mut [Voxel],
     dims: [u32; 3],
     voxel_size: f32,
     center: [f32; 3],
     half_size: f32,
+    material: MaterialConfig,
+    gradient: &GradientConfig,
 ) {
+    let y_min = center[1].sub(half_size);
+    let y_range = half_size.mul(2.0);
+
     for coord_z in 0..dims[2] {
         for coord_y in 0..dims[1] {
             for coord_x in 0..dims[0] {
@@ -38,9 +56,20 @@ pub(super) fn generate(
                     let max_dist = dist_x.max(dist_y).max(dist_z);
                     let dist = max_dist.div(half_size);
                     let intensity = 1.0_f32.sub(dist.mul(0.3));
+
+                    let y_ratio = world_y.sub(y_min).div(y_range).clamp(0.0, 1.0);
+                    let sigma_s = lerp3(gradient.bottom.sigma_s, gradient.top.sigma_s, y_ratio);
+                    let sigma_a = lerp3(gradient.bottom.sigma_a, gradient.top.sigma_a, y_ratio);
+
                     let idx = index(coord_x, coord_y, coord_z, dims);
                     if let Some(slot) = voxels.get_mut(idx) {
-                        *slot = Voxel { intensity };
+                        *slot = Voxel {
+                            intensity,
+                            sigma_a,
+                            sigma_s,
+                            anisotropy: material.anisotropy,
+                            ior: material.ior,
+                        };
                     }
                 }
             }

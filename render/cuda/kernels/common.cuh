@@ -25,16 +25,10 @@ struct RenderParams
     float light_intensity;
     unsigned int samples_per_pixel;
     unsigned int current_sample;
-    unsigned int _pad5;
-    float3 sigma_a;
-    float _pad6;
-    float3 sigma_s;
-    float g;
-    float ior;
+    float majorant;
     unsigned int seed;
-    unsigned int _pad7[2];
     float3 background;
-    float _pad8;
+    float _pad5;
 };
 struct Ray
 {

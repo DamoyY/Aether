@@ -15,8 +15,22 @@ pub struct SceneData {
     pub voxel_size: f32,         // 单个体素的边长（世界坐标单位）
     pub camera: Camera,
     pub light: Light,
-    pub material: Material,
     pub background: [f32; 3],    // 背景颜色 RGB
+}
+```
+
+## Voxel 结构
+
+每个体素携带独立的材质属性：
+
+```rust
+#[repr(C)]
+pub struct Voxel {
+    pub intensity: f32,          // 密度/强度 [0, 1]
+    pub sigma_a: [f32; 3],       // 吸收系数 RGB（单位：1/世界坐标单位）
+    pub sigma_s: [f32; 3],       // 散射系数 RGB（单位：1/世界坐标单位）
+    pub anisotropy: f32,         // 各向异性参数 g，范围 [-1, 1]
+    pub ior: f32,                // 折射率（Index of Refraction）
 }
 ```
 
@@ -38,22 +52,6 @@ pub struct Light {
     pub position: [f32; 3],  // 光源位置（世界坐标）
     pub color: [f32; 3],     // 光源颜色 RGB（可大于 1.0 表示高亮度）
     pub intensity: f32,      // 光源强度
-}
-```
-
-## Material
-
-次表面散射材质参数：
-
-```rust
-pub struct Material {
-    pub sigma_a: [f32; 3],   // 吸收系数 RGB（单位：1/世界坐标单位）
-    pub sigma_s: [f32; 3],   // 散射系数 RGB（单位：1/世界坐标单位）
-    pub anisotropy: f32,     // 各向异性参数 g，范围 [-1, 1]
-                             //   g > 0: 前向散射
-                             //   g = 0: 各向同性散射
-                             //   g < 0: 后向散射
-    pub ior: f32,            // 折射率（Index of Refraction）
 }
 ```
 

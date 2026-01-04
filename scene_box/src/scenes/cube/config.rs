@@ -9,6 +9,7 @@ pub(super) struct CubeConfig {
     pub light: LightConfig,
     pub voxel: VoxelConfig,
     pub material: MaterialConfig,
+    pub gradient: GradientConfig,
     pub background: [f32; 3],
     pub generator: GeneratorConfig,
 }
@@ -36,8 +37,6 @@ pub(super) struct VoxelConfig {
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub(super) struct MaterialConfig {
-    pub sigma_a: [f32; 3],
-    pub sigma_s: [f32; 3],
     pub anisotropy: f32,
     pub ior: f32,
 }
@@ -46,6 +45,18 @@ pub(super) struct MaterialConfig {
 pub(super) struct GeneratorConfig {
     pub center: [f32; 3],
     pub half_size: f32,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub(super) struct GradientMaterialConfig {
+    pub sigma_a: [f32; 3],
+    pub sigma_s: [f32; 3],
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub(super) struct GradientConfig {
+    pub bottom: GradientMaterialConfig,
+    pub top: GradientMaterialConfig,
 }
 
 impl CubeConfig {
