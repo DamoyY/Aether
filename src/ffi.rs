@@ -57,6 +57,8 @@ pub(crate) struct GpuRenderParams {
     pub ior: f32,
     pub seed: u32,
     pub _pad7: [u32; 2],
+    pub background: [f32; 3],
+    pub _pad8: f32,
 }
 // SAFETY: GpuRenderParams is #[repr(C)] and contains only primitive types valid for GPU transfer.
 unsafe impl DeviceRepr for GpuRenderParams {}

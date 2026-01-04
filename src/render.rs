@@ -172,6 +172,9 @@ impl Renderer {
 
             seed: rand::random(),
             _pad7: [0; 2],
+
+            background: self.config.scene.background,
+            _pad8: 0.0,
         };
 
         self.resources

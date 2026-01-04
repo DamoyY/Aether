@@ -169,13 +169,29 @@ float3 trace_path(Ray ray, const Voxel* voxels,
                   curandState* state) {
     float3 color = make_float3(0.0f, 0.0f, 0.0f);
     float3 throughput = make_float3(1.0f, 1.0f, 1.0f);
+    float3 sigma_t = render_params.sigma_a + render_params.sigma_s;
+    bool inside_medium = false;
 
-    for (unsigned int bounce = 0; bounce < render_params.max_bounces; bounce++) {
+    for (unsigned int bounce = 0; ; bounce++) {
+        if (bounce > 0) {
+            float p_continue = fminf(max_component(throughput), 0.95f);
+            if (random_float(state) >= p_continue) {
+                break;
+            }
+            throughput = throughput / p_continue;
+        }
+
+        if (bounce >= 10000) break;
+
         HitRecord hit = ray_march_voxels(ray, voxels, voxel_params, 1000.0f);
 
         if (!hit.hit) {
-            color = color + throughput * make_float3(0.1f, 0.1f, 0.15f);
+            color = color + throughput * render_params.background;
             break;
+        }
+
+        if (inside_medium) {
+            throughput = throughput * transmittance(hit.t, sigma_t);
         }
 
         float eta = hit.inside ? render_params.ior : (1.0f / render_params.ior);
@@ -193,22 +209,19 @@ float3 trace_path(Ray ray, const Voxel* voxels,
                 ray.direction = normalize(refracted);
 
                 if (!hit.inside) {
+                    inside_medium = true;
                     float3 sss_contribution = volume_scatter(
                         ray, voxels, voxel_params, render_params, state, 10
                     );
                     color = color + throughput * sss_contribution;
+                } else {
+                    inside_medium = false;
                 }
             } else {
                 float3 reflected = reflect(ray.direction, hit.normal);
                 ray.origin = hit.position + hit.normal * 0.001f;
                 ray.direction = reflected;
             }
-        }
-
-        if (bounce > 3) {
-            float p = max_component(throughput);
-            if (random_float(state) > p) break;
-            throughput = throughput / p;
         }
     }
 

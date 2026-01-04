@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(F:/Downloads/electron/sss/clippy.bat)"
+      "Bash(F:/Downloads/electron/sss/clippy.bat)",
+      "Bash(cmd /c \"F:\\\\Downloads\\\\electron\\\\sss\\\\clippy.bat\")"
     ]
   }
 }
