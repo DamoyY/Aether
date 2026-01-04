@@ -3,7 +3,8 @@
     "allow": [
       "Bash(F:/Downloads/voxel_sss_renderer/render/clippy.bat)",
       "Bash(cmd /c \"F:\\\\Downloads\\\\voxel_sss_renderer\\\\render\\\\clippy.bat\")",
-      "Bash(powershell -Command \"& ''F:\\\\Downloads\\\\voxel_sss_renderer\\\\render\\\\clippy.bat''\")"
+      "Bash(powershell -Command \"& ''F:\\\\Downloads\\\\voxel_sss_renderer\\\\render\\\\clippy.bat''\")",
+      "Bash(findstr:*)"
     ]
   }
 }

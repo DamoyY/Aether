@@ -2,3 +2,4 @@ target/
 CLAUDE.md
 sss/cuda/kernels/path_trace.ptx
 .gitignore
+**/project.md

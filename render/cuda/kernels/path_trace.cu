@@ -17,6 +17,7 @@ __device__ __forceinline__ bool ray_aabb_intersect(const Ray &ray, const float3 
 __device__ bool delta_tracking_sample(const Ray &ray, const Voxel *voxels,
                                       const VoxelGridParams &params,
                                       float majorant, float t_min, float t_max,
+                                      int hero_channel,
                                       PCG32State *state,
                                       float &sampled_t, Voxel &sampled_voxel)
 {
@@ -32,7 +33,9 @@ __device__ bool delta_tracking_sample(const Ray &ray, const Voxel *voxels,
         float3 pos = ray.origin + ray.direction * t;
         Voxel voxel = sample_voxel(voxels, pos.x, pos.y, pos.z, params);
         float density = fmaxf(voxel.intensity, 0.0f);
-        if (random_float(state) < density)
+        float sigma_t_hero = voxel.sigma_a[hero_channel] + voxel.sigma_s[hero_channel];
+        float local_sigma_t = density * sigma_t_hero;
+        if (random_float(state) < local_sigma_t / majorant)
         {
             sampled_t = t;
             sampled_voxel = voxel;
@@ -80,31 +83,41 @@ __device__ float3 estimate_transmittance_ratio_tracking(float3 start, float3 end
 __device__ float3 trace_volumetric_path(Ray ray, const Voxel *voxels,
                                         const VoxelGridParams &voxel_params,
                                         const RenderParams &render_params,
+                                        unsigned int pixel_idx,
                                         PCG32State *state)
 {
     float3 color = make_float3(0.0f, 0.0f, 0.0f);
-    float3 throughput = make_float3(1.0f, 1.0f, 1.0f);
     float majorant = render_params.majorant;
     float3 box_min = make_float3(0.0f, 0.0f, 0.0f);
     float3 box_max = make_float3(
-                                   voxel_params.dim_x * voxel_params.voxel_size,
-                                   voxel_params.dim_y * voxel_params.voxel_size,
-                                   voxel_params.dim_z * voxel_params.voxel_size);
+        voxel_params.dim_x * voxel_params.voxel_size,
+        voxel_params.dim_y * voxel_params.voxel_size,
+        voxel_params.dim_z * voxel_params.voxel_size);
+    int hero_channel = (pixel_idx + render_params.current_sample) % 3;
+    float hero_throughput = 1.0f;
     for (unsigned int bounce = 0;; bounce++)
     {
         if (bounce > 0)
         {
-            float p_continue = fminf(max_component(throughput), 0.95f);
+            float p_continue = fminf(hero_throughput, 0.95f);
             if (random_float(state) >= p_continue)
             {
                 break;
             }
-            throughput = throughput / p_continue;
+            hero_throughput = hero_throughput / p_continue;
         }
         float t_near, t_far;
         if (!ray_aabb_intersect(ray, box_min, box_max, t_near, t_far))
         {
-            color = color + throughput * render_params.background;
+            float bg_value = (hero_channel == 0) ? render_params.background.x : (hero_channel == 1) ? render_params.background.y
+                                                                                                    : render_params.background.z;
+            float hero_contrib = hero_throughput * bg_value;
+            if (hero_channel == 0)
+                color.x += hero_contrib;
+            else if (hero_channel == 1)
+                color.y += hero_contrib;
+            else
+                color.z += hero_contrib;
             break;
         }
         t_near = fmaxf(t_near, 0.0f);
@@ -113,18 +126,24 @@ __device__ float3 trace_volumetric_path(Ray ray, const Voxel *voxels,
         bool scattered = delta_tracking_sample(
             ray, voxels, voxel_params,
             majorant, t_near, t_far,
+            hero_channel,
             state, sampled_t, sampled_voxel);
         if (!scattered)
         {
-            color = color + throughput * render_params.background;
+            float bg_value = (hero_channel == 0) ? render_params.background.x : (hero_channel == 1) ? render_params.background.y
+                                                                                                    : render_params.background.z;
+            float hero_contrib = hero_throughput * bg_value;
+            if (hero_channel == 0)
+                color.x += hero_contrib;
+            else if (hero_channel == 1)
+                color.y += hero_contrib;
+            else
+                color.z += hero_contrib;
             break;
         }
         float3 scatter_pos = ray.origin + ray.direction * sampled_t;
-        float3 sigma_s = make_float3(sampled_voxel.sigma_s[0], sampled_voxel.sigma_s[1], sampled_voxel.sigma_s[2]);
-        float3 sigma_t = make_float3(
-            sampled_voxel.sigma_a[0] + sampled_voxel.sigma_s[0],
-            sampled_voxel.sigma_a[1] + sampled_voxel.sigma_s[1],
-            sampled_voxel.sigma_a[2] + sampled_voxel.sigma_s[2]);
+        float sigma_s_hero = sampled_voxel.sigma_s[hero_channel];
+        float sigma_t_hero = sampled_voxel.sigma_a[hero_channel] + sampled_voxel.sigma_s[hero_channel];
         float g = sampled_voxel.anisotropy;
         float3 to_light = render_params.light_pos - scatter_pos;
         float light_dist = length(to_light);
@@ -136,16 +155,15 @@ __device__ float3 trace_volumetric_path(Ray ray, const Voxel *voxels,
             state);
         float cos_angle = dot(-ray.direction, light_dir);
         float phase = henyey_greenstein_phase(cos_angle, g);
-        float sigma_t_max = fmaxf(fmaxf(sigma_t.x, sigma_t.y), sigma_t.z);
-        float3 effective_weight = sigma_s / sigma_t_max;
-        color = color + throughput * effective_weight * phase *
-                            light_transmittance * render_params.light_color *
-                            render_params.light_intensity / (light_dist * light_dist);
+        float scattering_albedo = (sigma_t_hero > 0.0f) ? (sigma_s_hero / sigma_t_hero) : 0.0f;
+        float3 light_color_scaled = render_params.light_color * render_params.light_intensity / (light_dist * light_dist);
+        float3 nee_contrib = light_transmittance * light_color_scaled * phase * scattering_albedo * hero_throughput;
+        color = color + nee_contrib;
         ray.origin = scatter_pos;
         ray.direction = sample_hg_phase(state, ray.direction, g);
-        throughput = throughput * effective_weight;
+        hero_throughput = hero_throughput * scattering_albedo;
     }
-    return color;
+    return color * 3.0f;
 }
 extern "C" __global__ void render_kernel(float4 *framebuffer, float4 *accumulator,
                                          const Voxel *voxels,
@@ -174,7 +192,7 @@ extern "C" __global__ void render_kernel(float4 *framebuffer, float4 *accumulato
         render_params.camera_forward +
         render_params.camera_right * ndc_x +
         render_params.camera_up * ndc_y);
-    float3 color = trace_volumetric_path(ray, voxels, voxel_params, render_params, &rand_state);
+    float3 color = trace_volumetric_path(ray, voxels, voxel_params, render_params, pixel_idx, &rand_state);
     float4 acc = accumulator[pixel_idx];
     acc.x += color.x;
     acc.y += color.y;
