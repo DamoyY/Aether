@@ -1,2 +1,3 @@
 /target
 CLAUDE.md
+cuda/kernels/path_trace.ptx
