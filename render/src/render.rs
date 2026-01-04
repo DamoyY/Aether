@@ -3,7 +3,7 @@ use core::ops::{Add as _, Div as _, Mul as _, Sub as _};
 use anyhow::Result;
 use cudarc::driver::{LaunchConfig, PushKernelArg as _};
 use glam::Vec3;
-use scene::SceneData;
+use scene_box::SceneData;
 
 use crate::{
     config::Config,
@@ -45,7 +45,7 @@ pub(crate) struct Renderer {
     camera: Camera,
     light: PointLight,
     config: Config,
-    material: scene::Material,
+    material: scene_box::Material,
     background: [f32; 3],
     current_sample: u32,
 }

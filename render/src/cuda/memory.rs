@@ -14,7 +14,7 @@ use cudarc::driver::{
     CudaSlice, CudaStream,
 };
 
-use scene::Voxel;
+use scene_box::Voxel;
 
 use crate::ffi::{GpuRenderParams, GpuVoxelGridParams, Rgba};
 

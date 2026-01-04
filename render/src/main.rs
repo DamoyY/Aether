@@ -13,7 +13,7 @@ use config::Config;
 use log::info;
 use pixels::{Pixels, SurfaceTexture};
 use render::Renderer;
-use scene::SceneData;
+use scene_box::SceneData;
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
@@ -217,10 +217,10 @@ impl ApplicationHandler for App {
 fn main() -> Result<()> {
     env_logger::init();
 
-    let config = Config::load("sss/sss.yaml")?;
+    let config = Config::load("render/render.yaml")?;
     info!("Configuration loaded");
 
-    let scene_data = scene::generate(&config.scene_path)?;
+    let scene_data = scene_box::generate(&config.scene_path)?;
     info!("Scene generated: {:?}", scene_data.dimensions);
 
     let event_loop = EventLoop::new()?;

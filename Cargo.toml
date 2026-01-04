@@ -1,6 +1,6 @@
 # ！该文件的内容未经允许禁止修改！
 [workspace]
-members = ["sss", "scene"]
+members = ["render", "scene_box"]
 resolver = "3"
 
 [profile.release]

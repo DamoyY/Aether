@@ -1539,6 +1539,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 
 [[package]]
+name = "render"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "cudarc",
+ "env_logger",
+ "glam",
+ "glob",
+ "log",
+ "pixels",
+ "rand",
+ "scene_box",
+ "serde",
+ "serde_yaml",
+ "winit",
+]
+
+[[package]]
 name = "renderdoc-sys"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1607,7 +1626,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "scene"
+name = "scene_box"
 version = "0.0.0"
 dependencies = [
  "anyhow",
@@ -1754,25 +1773,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eda41003dc44290527a59b13432d4a0379379fa074b70174882adfbdfd917844"
 dependencies = [
  "bitflags 2.10.0",
-]
-
-[[package]]
-name = "sss"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "bytemuck",
- "cudarc",
- "env_logger",
- "glam",
- "glob",
- "log",
- "pixels",
- "rand",
- "scene",
- "serde",
- "serde_yaml",
- "winit",
 ]
 
 [[package]]
