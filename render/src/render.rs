@@ -209,7 +209,8 @@ impl Renderer {
             let mut builder = self.ctx.stream.launch_builder(&self.ctx.render_fn);
             builder.arg(&mut self.resources.framebuffer);
             builder.arg(&mut self.resources.accumulator);
-            builder.arg(&self.resources.voxel_buffer);
+            builder.arg(&self.resources.density_texture.texture);
+            builder.arg(&self.resources.material_buffer);
             builder.arg(&self.resources.voxel_params);
             builder.arg(&self.resources.render_params);
             // SAFETY: The kernel arguments match the expected types and the launch configuration is valid.
