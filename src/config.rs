@@ -18,7 +18,6 @@ pub(crate) struct Config {
 pub(crate) struct RenderConfig {
     pub width: u32,
     pub height: u32,
-    pub max_bounces: u32,
     pub target_samples: u32,
     #[serde(default = "default_samples_per_frame")]
     pub samples_per_frame: u32,

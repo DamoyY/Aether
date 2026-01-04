@@ -1,7 +1,6 @@
 render:
   width: 1280
   height: 720
-  max_bounces: 128
   target_samples: 3000
   samples_per_frame: 20
 
@@ -13,8 +12,8 @@ camera:
 
 light:
   position: [2.0, 3.0, 2.0]
-  color: [2.0, 1.7, 1.0]
-  intensity: 10.0
+  color: [1.5, 1.2, 1.0]
+  intensity: 8.0
 
 voxel:
   dimensions: [64, 64, 64]

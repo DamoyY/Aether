@@ -46,7 +46,6 @@ pub(crate) struct GpuRenderParams {
     pub _pad4: f32,
     pub light_color: [f32; 3],
     pub light_intensity: f32,
-    pub max_bounces: u32,
     pub samples_per_pixel: u32,
     pub current_sample: u32,
     pub _pad5: u32,

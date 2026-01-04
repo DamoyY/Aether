@@ -23,7 +23,6 @@ struct RenderParams
     float _pad4;
     float3 light_color;
     float light_intensity;
-    unsigned int max_bounces;
     unsigned int samples_per_pixel;
     unsigned int current_sample;
     unsigned int _pad5;
