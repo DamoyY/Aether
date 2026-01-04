@@ -82,8 +82,8 @@ __device__ float3 trace_volumetric_path(Ray ray, cudaTextureObject_t voxel_tex,
     float3 throughput = make_float3(1.0f, 1.0f, 1.0f);
     float3 sigma_t = render_params.sigma_a + render_params.sigma_s;
     float sigma_t_max = fmaxf(fmaxf(sigma_t.x, sigma_t.y), sigma_t.z);
-    float3 box_min = make_float3(voxel_params.origin_x, voxel_params.origin_y, voxel_params.origin_z);
-    float3 box_max = box_min + make_float3(
+    float3 box_min = make_float3(0.0f, 0.0f, 0.0f);
+    float3 box_max = make_float3(
                                    voxel_params.dim_x * voxel_params.voxel_size,
                                    voxel_params.dim_y * voxel_params.voxel_size,
                                    voxel_params.dim_z * voxel_params.voxel_size);

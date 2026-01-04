@@ -19,10 +19,6 @@ pub(crate) struct GpuVoxelGridParams {
     pub dim_y: u32,
     pub dim_z: u32,
     pub voxel_size: f32,
-    pub origin_x: f32,
-    pub origin_y: f32,
-    pub origin_z: f32,
-    pub _padding: u32,
 }
 // SAFETY: GpuVoxelGridParams is #[repr(C)] and contains only primitive types valid for GPU transfer.
 unsafe impl DeviceRepr for GpuVoxelGridParams {}

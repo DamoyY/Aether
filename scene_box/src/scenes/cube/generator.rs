@@ -11,11 +11,10 @@ fn index(coord_x: u32, coord_y: u32, coord_z: u32, dims: [u32; 3]) -> usize {
     usize::try_from(raw_idx).unwrap_or(usize::MAX)
 }
 
-pub(crate) fn generate(
+pub(super) fn generate(
     voxels: &mut [Voxel],
     dims: [u32; 3],
     voxel_size: f32,
-    origin: [f32; 3],
     center: [f32; 3],
     half_size: f32,
 ) {
@@ -25,9 +24,9 @@ pub(crate) fn generate(
                 let cx = u16::try_from(coord_x).unwrap_or(u16::MAX);
                 let cy = u16::try_from(coord_y).unwrap_or(u16::MAX);
                 let cz = u16::try_from(coord_z).unwrap_or(u16::MAX);
-                let world_x = origin[0].add((f32::from(cx).add(0.5)).mul(voxel_size));
-                let world_y = origin[1].add((f32::from(cy).add(0.5)).mul(voxel_size));
-                let world_z = origin[2].add((f32::from(cz).add(0.5)).mul(voxel_size));
+                let world_x = (f32::from(cx).add(0.5)).mul(voxel_size);
+                let world_y = (f32::from(cy).add(0.5)).mul(voxel_size);
+                let world_z = (f32::from(cz).add(0.5)).mul(voxel_size);
                 let rel_x = world_x.sub(center[0]);
                 let rel_y = world_y.sub(center[1]);
                 let rel_z = world_z.sub(center[2]);

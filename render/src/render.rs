@@ -92,10 +92,6 @@ impl Renderer {
             dim_y: scene_data.dimensions[1],
             dim_z: scene_data.dimensions[2],
             voxel_size: scene_data.voxel_size,
-            origin_x: scene_data.origin[0],
-            origin_y: scene_data.origin[1],
-            origin_z: scene_data.origin[2],
-            _padding: 0,
         };
         let resources = GpuResources::new(
             &ctx.stream,

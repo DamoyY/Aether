@@ -1,11 +1,11 @@
 mod config;
-
-#[path = "scenes/cube/cube.rs"]
-mod cube;
+mod scenes {
+    pub(crate) mod cube;
+}
 
 use anyhow::{bail, Result};
 use bytemuck::{Pod, Zeroable};
-use config::{SceneConfig, SceneSelector};
+use config::SceneSelector;
 use cudarc::driver::DeviceRepr;
 use std::path::Path;
 
@@ -46,12 +46,12 @@ pub struct SceneData {
     pub voxels: Vec<Voxel>,
     pub dimensions: [u32; 3],
     pub voxel_size: f32,
-    pub origin: [f32; 3],
     pub camera: Camera,
     pub light: Light,
     pub material: Material,
     pub background: [f32; 3],
 }
+
 #[inline]
 pub fn generate<P: AsRef<Path>>(path: P) -> Result<SceneData> {
     let base_path = path.as_ref().parent().unwrap_or_else(|| Path::new("."));
@@ -63,50 +63,9 @@ pub fn generate<P: AsRef<Path>>(path: P) -> Result<SceneData> {
         .join("scenes")
         .join(scene_name)
         .join(format!("{scene_name}.yaml"));
-    let config = SceneConfig::load(&scene_path)?;
-
-    let dim0 = usize::try_from(config.voxel.dimensions[0]).unwrap_or(usize::MAX);
-    let dim1 = usize::try_from(config.voxel.dimensions[1]).unwrap_or(usize::MAX);
-    let dim2 = usize::try_from(config.voxel.dimensions[2]).unwrap_or(usize::MAX);
-    let size = dim0.saturating_mul(dim1).saturating_mul(dim2);
-    let mut voxels = vec![Voxel { intensity: 0.0 }; size];
 
     match scene_name.as_str() {
-        "cube" => {
-            cube::generate(
-                &mut voxels,
-                config.voxel.dimensions,
-                config.voxel.voxel_size,
-                config.voxel.origin,
-                config.generator.center,
-                config.generator.half_size,
-            );
-        }
+        "cube" => scenes::cube::generate(&scene_path),
         _ => bail!("Unknown scene type: {scene_name}"),
     }
-
-    Ok(SceneData {
-        voxels,
-        dimensions: config.voxel.dimensions,
-        voxel_size: config.voxel.voxel_size,
-        origin: config.voxel.origin,
-        camera: Camera {
-            position: config.camera.position,
-            target: config.camera.target,
-            up: config.camera.up,
-            fov: config.camera.fov,
-        },
-        light: Light {
-            position: config.light.position,
-            color: config.light.color,
-            intensity: config.light.intensity,
-        },
-        material: Material {
-            sigma_a: config.material.sigma_a,
-            sigma_s: config.material.sigma_s,
-            anisotropy: config.material.anisotropy,
-            ior: config.material.ior,
-        },
-        background: config.background,
-    })
 }
