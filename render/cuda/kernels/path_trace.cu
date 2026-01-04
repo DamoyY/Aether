@@ -25,7 +25,7 @@ __device__ bool delta_tracking_sample(const Ray &ray, cudaTextureObject_t densit
     float t = t_min;
     while (t < t_max)
     {
-        float free_path = -logf(1.0f - random_float(state) + 1e-10f) / majorant;
+        float free_path = -logf(1.0f - random_float(state)) / majorant;
         t += free_path;
         if (t >= t_max)
         {
@@ -167,8 +167,16 @@ __device__ float3 trace_volumetric_path(Ray ray, cudaTextureObject_t density_tex
         float phase = henyey_greenstein_phase(cos_angle, g);
         float scattering_albedo = (sigma_t_hero > 0.0f) ? (sigma_s_hero / sigma_t_hero) : 0.0f;
         float3 light_color_scaled = render_params.light_color * render_params.light_intensity / (light_dist * light_dist);
-        float3 nee_contrib = light_transmittance * light_color_scaled * phase * scattering_albedo * hero_throughput;
-        color = color + nee_contrib;
+        float3 incoming_light = light_transmittance * light_color_scaled;
+        float light_comp = (hero_channel == 0) ? incoming_light.x : (hero_channel == 1) ? incoming_light.y
+                                                                                        : incoming_light.z;
+        float current_contrib = light_comp * phase * scattering_albedo * hero_throughput;
+        if (hero_channel == 0)
+            color.x += current_contrib;
+        else if (hero_channel == 1)
+            color.y += current_contrib;
+        else
+            color.z += current_contrib;
         ray.origin = scatter_pos;
         ray.direction = sample_hg_phase(state, ray.direction, g);
         hero_throughput = hero_throughput * scattering_albedo;
