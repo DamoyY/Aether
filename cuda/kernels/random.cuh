@@ -1,23 +1,39 @@
 #ifndef RANDOM_CUH
 #define RANDOM_CUH
-#include <curand_kernel.h>
 #include "common.cuh"
-__device__ __forceinline__ void init_random(curandState *state, unsigned int seed,
+struct PCG32State
+{
+    unsigned long long state;
+    unsigned long long inc;
+};
+__device__ __forceinline__ unsigned int pcg32_random(PCG32State *rng)
+{
+    unsigned long long oldstate = rng->state;
+    rng->state = oldstate * 6364136223846793005ULL + rng->inc;
+    unsigned int xorshifted = (unsigned int)(((oldstate >> 18u) ^ oldstate) >> 27u);
+    unsigned int rot = (unsigned int)(oldstate >> 59u);
+    return (xorshifted >> rot) | (xorshifted << ((~rot + 1u) & 31));
+}
+__device__ __forceinline__ void init_random(PCG32State *state, unsigned int seed,
                                             unsigned int pixel_id, unsigned int sample_id)
 {
-    curand_init(seed + pixel_id * 1337 + sample_id * 7919, 0, 0, state);
+    state->state = 0ULL;
+    state->inc = ((unsigned long long)(pixel_id * 1337 + sample_id * 7919) << 1u) | 1u;
+    pcg32_random(state);
+    state->state += (unsigned long long)seed;
+    pcg32_random(state);
 }
-__device__ __forceinline__ float random_float(curandState *state)
+__device__ __forceinline__ float random_float(PCG32State *state)
 {
-    return curand_uniform(state);
+    return (float)pcg32_random(state) / 4294967296.0f;
 }
-__device__ __forceinline__ float random_float(curandState *state, float min_val, float max_val)
+__device__ __forceinline__ float random_float(PCG32State *state, float min_val, float max_val)
 {
-    return min_val + (max_val - min_val) * curand_uniform(state);
+    return min_val + (max_val - min_val) * random_float(state);
 }
 __device__ __forceinline__
     float3
-    random_in_unit_sphere(curandState *state)
+    random_in_unit_sphere(PCG32State *state)
 {
     float3 p;
     do
@@ -31,7 +47,7 @@ __device__ __forceinline__
 }
 __device__ __forceinline__
     float3
-    random_unit_vector(curandState *state)
+    random_unit_vector(PCG32State *state)
 {
     return normalize(random_in_unit_sphere(state));
 }
@@ -43,7 +59,7 @@ __device__ __forceinline__ float henyey_greenstein_phase(float cos_theta, float 
 }
 __device__ __forceinline__
     float3
-    sample_hg_phase(curandState *state, const float3 &wi, float g)
+    sample_hg_phase(PCG32State *state, const float3 &wi, float g)
 {
     float xi1 = random_float(state);
     float xi2 = random_float(state);
