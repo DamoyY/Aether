@@ -1,7 +1,7 @@
 render:
   width: 1920
-  height: 1050
-  target_samples: 3000
+  height: 1080
+  target_samples: 2000
   samples_per_frame: 50
 
 window:

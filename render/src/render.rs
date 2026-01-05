@@ -117,7 +117,7 @@ impl Renderer {
         let camera = Camera::new(
             Vec3::from_array(scene_data.camera.position),
             Vec3::from_array(scene_data.camera.target),
-            Vec3::from_array(scene_data.camera.up),
+            Vec3::Y,
             scene_data.camera.fov,
         );
         let light = PointLight {

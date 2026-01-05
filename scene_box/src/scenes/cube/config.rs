@@ -18,7 +18,6 @@ pub(super) struct CubeConfig {
 pub(super) struct CameraConfig {
     pub position: [f32; 3],
     pub target: [f32; 3],
-    pub up: [f32; 3],
     pub fov: f32,
 }
 

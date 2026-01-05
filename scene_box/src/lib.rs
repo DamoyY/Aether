@@ -1,5 +1,8 @@
 mod config;
 mod scenes {
+    #[expect(clippy::mod_module_files, reason = "To ensure a clear document structure")]
+    pub(crate) mod atom;
+    #[expect(clippy::mod_module_files, reason = "To ensure a clear document structure")]
     pub(crate) mod cube;
 }
 
@@ -26,7 +29,6 @@ unsafe impl DeviceRepr for Voxel {}
 pub struct Camera {
     pub position: [f32; 3],
     pub target: [f32; 3],
-    pub up: [f32; 3],
     pub fov: f32,
 }
 
@@ -60,14 +62,13 @@ pub fn generate<P: AsRef<Path>>(path: P) -> Result<SceneData> {
     let base_path = path.as_ref().parent().unwrap_or_else(|| Path::new("."));
     let selector = SceneSelector::load(&path)?;
     let scene_name = &selector.scene_name;
-
     let scene_path = base_path
         .join("src")
         .join("scenes")
         .join(scene_name)
         .join(format!("{scene_name}.yaml"));
-
     match scene_name.as_str() {
+        "atom" => scenes::atom::generate(&scene_path),
         "cube" => scenes::cube::generate(&scene_path),
         _ => bail!("Unknown scene type: {scene_name}"),
     }

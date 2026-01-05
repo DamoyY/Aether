@@ -40,7 +40,6 @@ pub struct Voxel {
 pub struct Camera {
     pub position: [f32; 3],  // 相机位置（世界坐标）
     pub target: [f32; 3],    // 相机目标点（世界坐标）
-    pub up: [f32; 3],        // 相机上方向向量（通常为 [0, 1, 0]）
     pub fov: f32,            // 垂直视场角（度）
 }
 ```

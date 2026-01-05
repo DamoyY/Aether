@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 bytemuck = { version = "*", features = ["derive"] }
-cudarc = { version = "*", features = ["cuda-13000"] }
+cudarc = { version = "*"}
 glam = "*"
 serde = { version = "*", features = ["derive"] }
 serde_yaml = "*"
