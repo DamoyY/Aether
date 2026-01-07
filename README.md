@@ -22,7 +22,7 @@ Aether 是一个基于物理的高性能体积路径追踪渲染器（Volumetric
 ## 例图
 
 ### 1. 原子轨道:
-[![使用该项目渲染的原子轨道](https://github.com/DamoyY/Aether/blob/master/diagram_1.png)]
+![使用该项目渲染的原子轨道](https://github.com/DamoyY/Aether/blob/master/diagram_1.png)
 
 ### 2. 基础体积渲染功能：
-[![基础体积渲染功能](https://github.com/DamoyY/Aether/blob/master/diagram_2.png)]
+![基础体积渲染功能](https://github.com/DamoyY/Aether/blob/master/diagram_2.png)
