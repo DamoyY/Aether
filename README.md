@@ -26,3 +26,7 @@ Aether 是一个基于物理的高性能体积路径追踪渲染器（Volumetric
 
 ### 2. 基础体积渲染功能：
 ![基础体积渲染功能](https://github.com/DamoyY/Aether/blob/master/diagram_2.png)
+
+## 许可证
+
+[Apache License 2.0](LICENSE)
