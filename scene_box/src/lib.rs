@@ -1,3 +1,4 @@
+extern crate alloc;
 mod config;
 mod scenes {
     #[expect(clippy::mod_module_files, reason = "To ensure a clear document structure")]
@@ -9,7 +10,7 @@ mod scenes {
 use anyhow::{bail, Result};
 use bytemuck::{Pod, Zeroable};
 use config::SceneSelector;
-use cudarc::driver::DeviceRepr;
+use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
 use std::path::Path;
 
 #[repr(C)]
@@ -24,6 +25,8 @@ pub struct Voxel {
 
 // SAFETY: Voxel is #[repr(C)] and contains only f32 which is valid for GPU transfer.
 unsafe impl DeviceRepr for Voxel {}
+// SAFETY: Voxel contains only f32 fields which are valid when zero-initialized.
+unsafe impl ValidAsZeroBits for Voxel {}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Camera {

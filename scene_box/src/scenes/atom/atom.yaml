@@ -9,18 +9,18 @@ light:
   radius: 1
   angle: 0
   color: [1.0, 1.0, 1.0]
-  intensity: 150000.0
+  intensity: 10000.0
 
 voxel:
   dimensions: [512, 512, 512]
-  voxel_size: 0.25
+  voxel_size: 0.3
 
 material:
   anisotropy: 0.8
   ior: 1.42
   # 色相配置：根据波函数 ψ 的正负值决定颜色
   ## 正极值色相（范围 0-360）
-  hue_positive: 60.
+  hue_positive: 330.0
   ## 负极值色相（范围 0-360）
   hue_negative: 240.0
   ## 饱和度 [0, 1]
@@ -33,7 +33,7 @@ material:
 background: [0.0, 0.0, 0.0]
 
 orbital:
-  n_quantum: 4
-  l_quantum: 0
-  m_quantum: 0
+  n_quantum: 5
+  l_quantum: 4
+  m_quantum: 3
   z_charge: 1.0

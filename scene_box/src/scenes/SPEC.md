@@ -71,14 +71,3 @@ world_x = (x + 0.5) * voxel_size
 world_y = (y + 0.5) * voxel_size
 world_z = (z + 0.5) * voxel_size
 ```
-
-## 文件结构
-
-```
-scenes/
-└─{scene_name}/
-   ├─mod.rs          # 模块入口，导出 generate 函数
-   ├─config.rs       # 场景配置结构体
-   ├─generator.rs    # 体素生成逻辑（可选，可合并到 mod.rs）
-   └─{scene_name}.yaml  # 配置文件
-```

@@ -9,27 +9,18 @@ pub(crate) struct Config {
     pub window: WindowConfig,
     pub scene_path: String,
 }
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct RenderConfig {
     pub width: u32,
     pub height: u32,
     pub target_samples: u32,
-    #[serde(default = "default_samples_per_frame")]
     pub samples_per_frame: u32,
-    #[serde(default)]
     pub output: Option<String>,
 }
-
-const fn default_samples_per_frame() -> u32 {
-    10
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct WindowConfig {
     pub title: String,
 }
-
 impl Config {
     pub(crate) fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;

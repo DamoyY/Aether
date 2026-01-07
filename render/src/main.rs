@@ -1,12 +1,13 @@
 extern crate alloc;
-
 mod config;
 mod cuda;
 mod ffi;
 mod render;
-
 use alloc::sync::Arc;
-use core::ops::{Div as _, Mul as _};
+use core::{
+    ops::{Div as _, Mul as _},
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use anyhow::Result;
 use config::Config;
@@ -22,7 +23,6 @@ use winit::{
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Window, WindowId},
 };
-
 struct App {
     config: Config,
     scene_data: Option<SceneData>,
@@ -30,10 +30,10 @@ struct App {
     pixels: Option<Pixels<'static>>,
     renderer: Option<Renderer>,
     saved: bool,
+    interrupted: Arc<AtomicBool>,
 }
-
 impl App {
-    const fn new(config: Config, scene_data: SceneData) -> Self {
+    const fn new(config: Config, scene_data: SceneData, interrupted: Arc<AtomicBool>) -> Self {
         Self {
             config,
             scene_data: Some(scene_data),
@@ -41,10 +41,25 @@ impl App {
             pixels: None,
             renderer: None,
             saved: false,
+            interrupted,
         }
     }
 }
-
+fn save_image(renderer: &Renderer, output_path: &str, width: u32, height: u32) {
+    match renderer.get_framebuffer() {
+        Ok(framebuffer) => {
+            if let Some(img) = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, framebuffer) {
+                match img.save(output_path) {
+                    Ok(()) => info!("Saved output to {output_path}"),
+                    Err(err) => log::error!("Failed to save output: {err}"),
+                }
+            } else {
+                log::error!("Failed to create image buffer: framebuffer size mismatch");
+            }
+        }
+        Err(err) => log::error!("Failed to get framebuffer: {err}"),
+    }
+}
 impl ApplicationHandler for App {
     fn new_events(&mut self, _event_loop: &ActiveEventLoop, _cause: StartCause) {}
 
@@ -55,8 +70,8 @@ impl ApplicationHandler for App {
                 self.config.render.width,
                 self.config.render.height,
             ))
-            .with_resizable(false);
-
+            .with_resizable(false)
+            .with_visible(false);
         let window = match event_loop.create_window(window_attributes) {
             Ok(w) => Arc::new(w),
             Err(err) => {
@@ -65,7 +80,6 @@ impl ApplicationHandler for App {
                 return;
             }
         };
-
         let window_size = window.inner_size();
         let surface_texture =
             SurfaceTexture::new(window_size.width, window_size.height, Arc::clone(&window));
@@ -104,6 +118,8 @@ impl ApplicationHandler for App {
 
         info!("Renderer initialized");
 
+        window.set_visible(true);
+
         self.window = Some(window);
         self.pixels = Some(pixels);
         self.renderer = Some(renderer);
@@ -136,7 +152,6 @@ impl ApplicationHandler for App {
         let Some(renderer) = self.renderer.as_mut() else {
             return;
         };
-
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
@@ -153,11 +168,9 @@ impl ApplicationHandler for App {
                         event_loop.exit();
                         return;
                     }
-
                     if let Ok(framebuffer) = renderer.get_framebuffer() {
                         pixels.frame_mut().copy_from_slice(&framebuffer);
                     }
-
                     let sample_count_u16 =
                         u16::try_from(renderer.sample_count()).unwrap_or(u16::MAX);
                     let target_samples_u16 =
@@ -174,21 +187,12 @@ impl ApplicationHandler for App {
                 } else if !self.saved {
                     self.saved = true;
                     if let Some(output_path) = self.config.render.output.as_ref() {
-                        match renderer.get_framebuffer() {
-                            Ok(framebuffer) => {
-                                let width = self.config.render.width;
-                                let height = self.config.render.height;
-                                if let Some(img) = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, framebuffer) {
-                                    match img.save(output_path) {
-                                        Ok(()) => info!("Saved output to {output_path}"),
-                                        Err(err) => log::error!("Failed to save output: {err}"),
-                                    }
-                                } else {
-                                    log::error!("Failed to create image buffer: framebuffer size mismatch");
-                                }
-                            }
-                            Err(err) => log::error!("Failed to get framebuffer: {err}"),
-                        }
+                        save_image(
+                            renderer,
+                            output_path,
+                            self.config.render.width,
+                            self.config.render.height,
+                        );
                     }
                     window.set_title(&format!(
                         "{} - Done ({} samples)",
@@ -230,6 +234,27 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if self.interrupted.load(Ordering::Relaxed) && !self.saved {
+            self.saved = true;
+            info!("Interrupted, saving image...");
+            if let (Some(renderer), Some(window)) = (self.renderer.as_ref(), self.window.as_ref()) {
+                if let Some(output_path) = self.config.render.output.as_ref() {
+                    save_image(
+                        renderer,
+                        output_path,
+                        self.config.render.width,
+                        self.config.render.height,
+                    );
+                }
+                window.set_title(&format!(
+                    "{} - Interrupted ({} samples)",
+                    renderer.window_title(),
+                    renderer.sample_count()
+                ));
+            }
+            event_loop.exit();
+            return;
+        }
         event_loop.set_control_flow(ControlFlow::Poll);
         if let Some(window) = self.window.as_ref() {
             window.request_redraw();
@@ -240,20 +265,19 @@ impl ApplicationHandler for App {
 
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {}
 }
-
 fn main() -> Result<()> {
     env_logger::init();
-
     let config = Config::load("render/render.yaml")?;
     info!("Configuration loaded");
-
     let scene_data = scene_box::generate(&config.scene_path)?;
     info!("Scene generated: {:?}", scene_data.dimensions);
-
+    let interrupted = Arc::new(AtomicBool::new(false));
+    let interrupted_clone = Arc::clone(&interrupted);
+    ctrlc::set_handler(move || {
+        interrupted_clone.store(true, Ordering::Relaxed);
+    })?;
     let event_loop = EventLoop::new()?;
-    let mut app = App::new(config, scene_data);
-
+    let mut app = App::new(config, scene_data, interrupted);
     event_loop.run_app(&mut app)?;
-
     Ok(())
 }
