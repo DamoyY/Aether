@@ -1,10 +1,9 @@
 use std::{env, path::PathBuf, process::Command};
 fn main() -> Result<(), Box<dyn core::error::Error>> {
     println!("cargo:rerun-if-changed=cuda/");
-    let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     let cuda_path = env::var("CUDA_PATH")?;
     let nvcc = format!("{cuda_path}/bin/nvcc");
-    let ptx_output = out_dir.join("path_trace.ptx");
+    let ptx_output = PathBuf::from(env::var("OUT_DIR")?).join("path_trace.ptx");
     let ptx_output_str = ptx_output.to_str().ok_or("Invalid PTX output path")?;
     Command::new(&nvcc)
         .args([

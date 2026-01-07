@@ -1,4 +1,5 @@
 use std::path::Path;
+use core::ops::Mul as _;
 
 use anyhow::Result;
 use serde::Deserialize;
@@ -45,9 +46,9 @@ impl LightConfig {
 fn cylindrical_to_cartesian(height: f32, radius: f32, angle_deg: f32) -> [f32; 3] {
     let angle_rad = angle_deg.to_radians();
     [
-        radius * angle_rad.cos(),
+        radius.mul(angle_rad.cos()),
         height,
-        radius * angle_rad.sin(),
+        radius.mul(angle_rad.sin()),
     ]
 }
 
@@ -59,10 +60,13 @@ pub(super) struct VoxelConfig {
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub(super) struct MaterialConfig {
-    pub sigma_a: [f32; 3],
-    pub sigma_s: [f32; 3],
     pub anisotropy: f32,
     pub ior: f32,
+    pub hue_positive: f32,
+    pub hue_negative: f32,
+    pub saturation: f32,
+    pub value: f32,
+    pub base_sigma_t: f32,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]

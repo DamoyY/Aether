@@ -48,8 +48,8 @@ pub(super) struct GeneratorConfig {
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub(super) struct GradientMaterialConfig {
-    pub sigma_a: [f32; 3],
-    pub sigma_s: [f32; 3],
+    pub albedo: [f32; 3],
+    pub sigma_t: [f32; 3],
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]

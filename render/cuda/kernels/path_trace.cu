@@ -38,7 +38,7 @@ __device__ bool delta_tracking_sample(const Ray &ray, cudaTextureObject_t densit
             continue;
         }
         VoxelMaterial mat = sample_material(materials, pos.x, pos.y, pos.z, params);
-        float sigma_t_hero = mat.sigma_a[hero_channel] + mat.sigma_s[hero_channel];
+        float sigma_t_hero = mat.sigma_t[hero_channel];
         float local_sigma_t = density * sigma_t_hero;
         if (random_float(state) < local_sigma_t / majorant)
         {
@@ -72,9 +72,9 @@ __device__ float3 estimate_transmittance_ratio_tracking(float3 start, float3 end
         }
         VoxelMaterial mat = sample_material(materials, pos.x, pos.y, pos.z, params);
         float3 sigma_t = make_float3(
-            mat.sigma_a[0] + mat.sigma_s[0],
-            mat.sigma_a[1] + mat.sigma_s[1],
-            mat.sigma_a[2] + mat.sigma_s[2]);
+            mat.sigma_t[0],
+            mat.sigma_t[1],
+            mat.sigma_t[2]);
         float ratio_x = fmaxf(1.0f - density * sigma_t.x / majorant, 0.0f);
         float ratio_y = fmaxf(1.0f - density * sigma_t.y / majorant, 0.0f);
         float ratio_z = fmaxf(1.0f - density * sigma_t.z / majorant, 0.0f);
@@ -152,8 +152,7 @@ __device__ float3 trace_volumetric_path(Ray ray, cudaTextureObject_t density_tex
             break;
         }
         float3 scatter_pos = ray.origin + ray.direction * sampled_t;
-        float sigma_s_hero = sampled_material.sigma_s[hero_channel];
-        float sigma_t_hero = sampled_material.sigma_a[hero_channel] + sampled_material.sigma_s[hero_channel];
+        float scattering_albedo = sampled_material.albedo[hero_channel];
         float g = sampled_material.anisotropy;
         float3 to_light = render_params.light_pos - scatter_pos;
         float light_dist = length(to_light);
@@ -165,7 +164,6 @@ __device__ float3 trace_volumetric_path(Ray ray, cudaTextureObject_t density_tex
             state);
         float cos_angle = dot(-ray.direction, light_dir);
         float phase = henyey_greenstein_phase(cos_angle, g);
-        float scattering_albedo = (sigma_t_hero > 0.0f) ? (sigma_s_hero / sigma_t_hero) : 0.0f;
         float3 light_color_scaled = render_params.light_color * render_params.light_intensity / (light_dist * light_dist);
         float3 incoming_light = light_transmittance * light_color_scaled;
         float light_comp = (hero_channel == 0) ? incoming_light.x : (hero_channel == 1) ? incoming_light.y

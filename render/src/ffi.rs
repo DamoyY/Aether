@@ -15,8 +15,8 @@ unsafe impl ValidAsZeroBits for Rgba {}
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub(crate) struct GpuVoxelMaterial {
-    pub sigma_a: [f32; 3],
-    pub sigma_s: [f32; 3],
+    pub albedo: [f32; 3],
+    pub sigma_t: [f32; 3],
     pub anisotropy: f32,
     pub ior: f32,
 }

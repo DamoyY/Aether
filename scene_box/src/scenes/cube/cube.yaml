@@ -9,20 +9,21 @@ light:
   intensity: 5.0
 
 voxel:
-  dimensions: [64, 64, 64]
-  voxel_size: 0.03125
+  dimensions: [128, 128, 128]
+  voxel_size: 0.01
 
 material:
-  anisotropy: 0.6
-  ior: 1.38
+  anisotropy: 0.8
+  ior: 1.42
 
 gradient:
   bottom:
-    sigma_a: [0.1, 2.0, 4.0]
-    sigma_s: [1.5, 1.5, 1.5]
+    albedo: [0.95, 0.8, 0.1]
+    sigma_t: [8.0, 8.0, 8.0]
+    
   top:
-    sigma_a: [0.05, 1.5, 3.0]
-    sigma_s: [1.2, 1.2, 1.2]
+    albedo: [0.95, 0.1, 0.4]
+    sigma_t: [6.0, 6.0, 6.0]
 
 background: [0.05, 0.07, 0.1]
 

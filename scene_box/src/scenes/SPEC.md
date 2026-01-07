@@ -27,8 +27,8 @@ pub struct SceneData {
 #[repr(C)]
 pub struct Voxel {
     pub intensity: f32,          // 密度/强度 [0, 1]
-    pub sigma_a: [f32; 3],       // 吸收系数 RGB（单位：1/世界坐标单位）
-    pub sigma_s: [f32; 3],       // 散射系数 RGB（单位：1/世界坐标单位）
+    pub albedo: [f32; 3],        // 散射反照率 RGB [0, 1]
+    pub sigma_t: [f32; 3],       // 消光系数 RGB（单位：1/世界坐标单位）
     pub anisotropy: f32,         // 各向异性参数 g，范围 [-1, 1]
     pub ior: f32,                // 折射率（Index of Refraction）
 }

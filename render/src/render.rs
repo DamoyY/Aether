@@ -89,12 +89,7 @@ fn compute_majorant(voxels: &[scene_box::Voxel]) -> f32 {
         .iter()
         .filter(|voxel| voxel.intensity > 0.0)
         .map(|voxel| {
-            let sigma_t = [
-                voxel.sigma_a[0].add(voxel.sigma_s[0]),
-                voxel.sigma_a[1].add(voxel.sigma_s[1]),
-                voxel.sigma_a[2].add(voxel.sigma_s[2]),
-            ];
-            sigma_t[0].max(sigma_t[1]).max(sigma_t[2])
+            voxel.sigma_t[0].max(voxel.sigma_t[1]).max(voxel.sigma_t[2])
         })
         .fold(0.0_f32, f32::max)
 }

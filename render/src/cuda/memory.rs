@@ -157,8 +157,8 @@ impl GpuResources {
         let gpu_materials: Vec<GpuVoxelMaterial> = voxel_data
             .iter()
             .map(|voxel| GpuVoxelMaterial {
-                sigma_a: voxel.sigma_a,
-                sigma_s: voxel.sigma_s,
+                albedo: voxel.albedo,
+                sigma_t: voxel.sigma_t,
                 anisotropy: voxel.anisotropy,
                 ior: voxel.ior,
             })

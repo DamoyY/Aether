@@ -1,6 +1,7 @@
 mod config;
 mod generator;
 
+use core::ops::Mul as _;
 use std::path::Path;
 
 use anyhow::Result;
@@ -17,8 +18,8 @@ pub(crate) fn generate<P: AsRef<Path>>(config_path: P) -> Result<SceneData> {
     let mut voxels = vec![
         Voxel {
             intensity: 0.0,
-            sigma_a: [0.0; 3],
-            sigma_s: [0.0; 3],
+            albedo: [0.0; 3],
+            sigma_t: [0.0; 3],
             anisotropy: 0.0,
             ior: 1.0,
         };
@@ -31,10 +32,13 @@ pub(crate) fn generate<P: AsRef<Path>>(config_path: P) -> Result<SceneData> {
         config.orbital,
         config.material,
     )?;
+    let dim_x: f32 = u16::try_from(config.voxel.dimensions[0]).unwrap_or(u16::MAX).into();
+    let dim_y: f32 = u16::try_from(config.voxel.dimensions[1]).unwrap_or(u16::MAX).into();
+    let dim_z: f32 = u16::try_from(config.voxel.dimensions[2]).unwrap_or(u16::MAX).into();
     let center = [
-        config.voxel.dimensions[0] as f32 * config.voxel.voxel_size * 0.5,
-        config.voxel.dimensions[1] as f32 * config.voxel.voxel_size * 0.5,
-        config.voxel.dimensions[2] as f32 * config.voxel.voxel_size * 0.5,
+        dim_x.mul(config.voxel.voxel_size).mul(0.5),
+        dim_y.mul(config.voxel.voxel_size).mul(0.5),
+        dim_z.mul(config.voxel.voxel_size).mul(0.5),
     ];
     Ok(SceneData {
         voxels,

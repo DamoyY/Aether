@@ -17,6 +17,8 @@ pub(crate) struct RenderConfig {
     pub target_samples: u32,
     #[serde(default = "default_samples_per_frame")]
     pub samples_per_frame: u32,
+    #[serde(default)]
+    pub output: Option<String>,
 }
 
 const fn default_samples_per_frame() -> u32 {

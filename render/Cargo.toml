@@ -1,5 +1,5 @@
 [package]
-name = "render"
+name = "Aether"
 version = "0.0.0"
 edition = "2024"
 build = "build.rs"
@@ -17,6 +17,7 @@ anyhow = "*"
 log = "*"
 env_logger = "*"
 rand = "*"
+image = { version = "*", default-features = false, features = ["png"] }
 
 [build-dependencies]
 glob = "*"

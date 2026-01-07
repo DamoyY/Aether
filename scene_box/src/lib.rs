@@ -16,8 +16,8 @@ use std::path::Path;
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct Voxel {
     pub intensity: f32,
-    pub sigma_a: [f32; 3],
-    pub sigma_s: [f32; 3],
+    pub albedo: [f32; 3],
+    pub sigma_t: [f32; 3],
     pub anisotropy: f32,
     pub ior: f32,
 }
@@ -41,8 +41,8 @@ pub struct Light {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Material {
-    pub sigma_a: [f32; 3],
-    pub sigma_s: [f32; 3],
+    pub albedo: [f32; 3],
+    pub sigma_t: [f32; 3],
     pub anisotropy: f32,
     pub ior: f32,
 }

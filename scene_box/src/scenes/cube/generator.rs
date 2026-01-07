@@ -58,15 +58,15 @@ pub(super) fn generate(
                     let intensity = 1.0_f32.sub(dist.mul(0.3));
 
                     let y_ratio = world_y.sub(y_min).div(y_range).clamp(0.0, 1.0);
-                    let sigma_s = lerp3(gradient.bottom.sigma_s, gradient.top.sigma_s, y_ratio);
-                    let sigma_a = lerp3(gradient.bottom.sigma_a, gradient.top.sigma_a, y_ratio);
+                    let albedo = lerp3(gradient.bottom.albedo, gradient.top.albedo, y_ratio);
+                    let sigma_t = lerp3(gradient.bottom.sigma_t, gradient.top.sigma_t, y_ratio);
 
                     let idx = index(coord_x, coord_y, coord_z, dims);
                     if let Some(slot) = voxels.get_mut(idx) {
                         *slot = Voxel {
                             intensity,
-                            sigma_a,
-                            sigma_s,
+                            albedo,
+                            sigma_t,
                             anisotropy: material.anisotropy,
                             ior: material.ior,
                         };

@@ -10,13 +10,14 @@ use core::ops::{Div as _, Mul as _};
 
 use anyhow::Result;
 use config::Config;
+use image::{ImageBuffer, Rgba};
 use log::info;
 use pixels::{Pixels, SurfaceTexture};
 use render::Renderer;
 use scene_box::SceneData;
 use winit::{
     application::ApplicationHandler,
-    dpi::LogicalSize,
+    dpi::PhysicalSize,
     event::{DeviceEvent, DeviceId, StartCause, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Window, WindowId},
@@ -28,6 +29,7 @@ struct App {
     window: Option<Arc<Window>>,
     pixels: Option<Pixels<'static>>,
     renderer: Option<Renderer>,
+    saved: bool,
 }
 
 impl App {
@@ -38,6 +40,7 @@ impl App {
             window: None,
             pixels: None,
             renderer: None,
+            saved: false,
         }
     }
 }
@@ -48,7 +51,7 @@ impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window_attributes = Window::default_attributes()
             .with_title(&self.config.window.title)
-            .with_inner_size(LogicalSize::new(
+            .with_inner_size(PhysicalSize::new(
                 self.config.render.width,
                 self.config.render.height,
             ))
@@ -166,6 +169,30 @@ impl ApplicationHandler for App {
                         "{} - {:.1}% ({} samples)",
                         renderer.window_title(),
                         progress,
+                        renderer.sample_count()
+                    ));
+                } else if !self.saved {
+                    self.saved = true;
+                    if let Some(output_path) = self.config.render.output.as_ref() {
+                        match renderer.get_framebuffer() {
+                            Ok(framebuffer) => {
+                                let width = self.config.render.width;
+                                let height = self.config.render.height;
+                                if let Some(img) = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, framebuffer) {
+                                    match img.save(output_path) {
+                                        Ok(()) => info!("Saved output to {output_path}"),
+                                        Err(err) => log::error!("Failed to save output: {err}"),
+                                    }
+                                } else {
+                                    log::error!("Failed to create image buffer: framebuffer size mismatch");
+                                }
+                            }
+                            Err(err) => log::error!("Failed to get framebuffer: {err}"),
+                        }
+                    }
+                    window.set_title(&format!(
+                        "{} - Done ({} samples)",
+                        renderer.window_title(),
                         renderer.sample_count()
                     ));
                 }

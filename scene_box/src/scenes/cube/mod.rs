@@ -17,8 +17,8 @@ pub(crate) fn generate<P: AsRef<Path>>(config_path: P) -> Result<SceneData> {
     let mut voxels = vec![
         Voxel {
             intensity: 0.0,
-            sigma_a: [0.0; 3],
-            sigma_s: [0.0; 3],
+            albedo: [0.0; 3],
+            sigma_t: [0.0; 3],
             anisotropy: 0.0,
             ior: 1.0,
         };

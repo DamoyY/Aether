@@ -1,6 +1,8 @@
 extern crate alloc;
 
 use alloc::sync::Arc;
+use std::env;
+use std::path::PathBuf;
 
 use anyhow::Result;
 use cudarc::{
@@ -19,11 +21,9 @@ pub(crate) struct Gpu {
 impl Gpu {
     pub(crate) fn new() -> Result<Self> {
         let ctx = CudaContext::new(0)?;
-        let stream = ctx.default_stream();
-
-        let ptx = include_str!(concat!(env!("OUT_DIR"), "/path_trace.ptx"));
-
-        let module = ctx.load_module(Ptx::from_src(ptx))?;
+        let stream = ctx.default_stream(); 
+        let ptx = PathBuf::from(env::var("OUT_DIR")?).join("path_trace.ptx");
+        let module = ctx.load_module(Ptx::from_file(ptx))?;
         let render_fn = module.load_function("render_kernel")?;
         let clear_fn = module.load_function("clear_accumulator")?;
 

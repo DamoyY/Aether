@@ -1,8 +1,9 @@
 render:
-  width: 1920
+  width: 1080
   height: 1080
-  target_samples: 2000
-  samples_per_frame: 50
+  target_samples: 20000
+  samples_per_frame: 500
+  output: "output.png"
 
 window:
   title: "Voxel SSS Renderer"
