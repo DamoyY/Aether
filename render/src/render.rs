@@ -8,16 +8,17 @@ use scene_box::SceneData;
 use crate::{
     config::Config,
     cuda::{context::Gpu, memory::GpuResources},
-    ffi::GpuRenderParams,
-    ffi::GpuVoxelGridParams,
+    ffi::{GpuRenderParams, GpuVoxelGridParams},
 };
 
 pub(crate) struct Camera {
-    pub position: Vec3,
-    pub forward: Vec3,
-    pub right: Vec3,
-    pub up: Vec3,
-    pub fov: f32,
+    position: Vec3,
+    forward: Vec3,
+    right: Vec3,
+    up: Vec3,
+    fov: f32,
+    yaw: f32,
+    pitch: f32,
 }
 impl Camera {
     pub(crate) fn new(position: Vec3, target: Vec3, world_up: Vec3, fov: f32) -> Self {
@@ -31,7 +32,50 @@ impl Camera {
             right,
             up,
             fov,
+            yaw: forward.z.atan2(forward.x),
+            pitch: forward.y.asin(),
         }
+    }
+
+    fn rebuild_basis(&mut self) {
+        const EPS: f32 = 1.0e-6;
+        let (sin_pitch, cos_pitch) = self.pitch.sin_cos();
+        let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
+        let forward_raw = Vec3::new(cos_pitch.mul(cos_yaw), sin_pitch, cos_pitch.mul(sin_yaw));
+        let forward = if forward_raw.length_squared() > EPS {
+            forward_raw.normalize()
+        } else {
+            Vec3::Z
+        };
+        let world_up = Vec3::Y;
+        let right_unnorm = forward.cross(world_up);
+        let right = if right_unnorm.length_squared() > EPS {
+            right_unnorm.normalize()
+        } else {
+            Vec3::X
+        };
+        let up_unnorm = right.cross(forward);
+        let up = if up_unnorm.length_squared() > EPS {
+            up_unnorm.normalize()
+        } else {
+            world_up
+        };
+
+        self.forward = forward;
+        self.right = right;
+        self.up = up;
+    }
+
+    fn look(&mut self, yaw_delta: f32, pitch_delta: f32) {
+        let max_pitch = core::f32::consts::FRAC_PI_2.sub(0.01);
+        let min_pitch = 0.0_f32.sub(max_pitch);
+        self.yaw = self.yaw.add(yaw_delta);
+        self.pitch = self.pitch.add(pitch_delta).clamp(min_pitch, max_pitch);
+        self.rebuild_basis();
+    }
+
+    fn translate(&mut self, delta: Vec3) {
+        self.position = self.position.add(delta);
     }
 }
 pub(crate) struct PointLight {
@@ -88,9 +132,7 @@ fn compute_majorant(voxels: &[scene_box::Voxel]) -> f32 {
     voxels
         .iter()
         .filter(|voxel| voxel.intensity > 0.0)
-        .map(|voxel| {
-            voxel.sigma_t[0].max(voxel.sigma_t[1]).max(voxel.sigma_t[2])
-        })
+        .map(|voxel| voxel.sigma_t[0].max(voxel.sigma_t[1]).max(voxel.sigma_t[2]))
         .fold(0.0_f32, f32::max)
 }
 impl Renderer {
@@ -243,5 +285,56 @@ impl Renderer {
 
     pub(crate) fn window_title(&self) -> &str {
         &self.config.window.title
+    }
+
+    pub(crate) const fn camera_position(&self) -> [f32; 3] {
+        [
+            self.camera.position.x,
+            self.camera.position.y,
+            self.camera.position.z,
+        ]
+    }
+
+    pub(crate) const fn camera_forward(&self) -> [f32; 3] {
+        [
+            self.camera.forward.x,
+            self.camera.forward.y,
+            self.camera.forward.z,
+        ]
+    }
+
+    pub(crate) fn apply_camera_input(
+        &mut self,
+        move_right: f32,
+        move_forward: f32,
+        move_up: f32,
+        yaw_delta: f32,
+        pitch_delta: f32,
+    ) {
+        const EPS: f32 = 1.0e-6;
+        if yaw_delta != 0.0 || pitch_delta != 0.0 {
+            self.camera.look(yaw_delta, pitch_delta);
+        }
+
+        let mut forward_flat = Vec3::new(self.camera.forward.x, 0.0, self.camera.forward.z);
+        if forward_flat.length_squared() > EPS {
+            forward_flat = forward_flat.normalize();
+        } else {
+            forward_flat = self.camera.forward;
+        }
+        let mut right_flat = Vec3::new(self.camera.right.x, 0.0, self.camera.right.z);
+        if right_flat.length_squared() > EPS {
+            right_flat = right_flat.normalize();
+        } else {
+            right_flat = self.camera.right;
+        }
+        let up = Vec3::Y;
+        let delta = right_flat
+            .mul(move_right)
+            .add(forward_flat.mul(move_forward))
+            .add(up.mul(move_up));
+        if delta != Vec3::ZERO {
+            self.camera.translate(delta);
+        }
     }
 }

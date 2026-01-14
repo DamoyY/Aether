@@ -1,5 +1,5 @@
-use std::path::Path;
 use core::ops::Mul as _;
+use std::path::Path;
 
 use anyhow::Result;
 use serde::Deserialize;

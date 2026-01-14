@@ -1,4 +1,8 @@
-use std::{env, path::{Path, PathBuf}, process::Command};
+use std::{
+    env,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 fn compile_cuda(nvcc: &str, src: &Path, out: &Path) -> Result<(), Box<dyn core::error::Error>> {
     let src_str = src.to_str().ok_or("Invalid CUDA source path")?;
@@ -19,7 +23,10 @@ fn compile_cuda(nvcc: &str, src: &Path, out: &Path) -> Result<(), Box<dyn core::
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("CUDA compilation failed for {src_str}:\nstdout: {stdout}\nstderr: {stderr}").into());
+        return Err(format!(
+            "CUDA compilation failed for {src_str}:\nstdout: {stdout}\nstderr: {stderr}"
+        )
+        .into());
     }
     Ok(())
 }

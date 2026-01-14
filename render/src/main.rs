@@ -5,7 +5,7 @@ mod ffi;
 mod render;
 use alloc::sync::Arc;
 use core::{
-    ops::{Div as _, Mul as _},
+    ops::{Div as _, Mul as _, Sub as _},
     sync::atomic::{AtomicBool, Ordering},
 };
 
@@ -13,16 +13,25 @@ use anyhow::Result;
 use config::Config;
 use image::{ImageBuffer, Rgba};
 use log::info;
+use mimalloc::MiMalloc;
 use pixels::{Pixels, SurfaceTexture};
 use render::Renderer;
 use scene_box::SceneData;
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
-    event::{DeviceEvent, DeviceId, StartCause, WindowEvent},
+    event::{DeviceEvent, DeviceId, ElementState, StartCause, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
 };
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
+const MOVE_STEPS: f32 = 20.0;
+const LOOK_STEPS: f32 = 30.0;
+
 struct App {
     config: Config,
     scene_data: Option<SceneData>,
@@ -31,9 +40,24 @@ struct App {
     renderer: Option<Renderer>,
     saved: bool,
     interrupted: Arc<AtomicBool>,
+    move_step_right: f32,
+    move_step_up: f32,
+    move_step_forward: f32,
+    look_step: f32,
 }
 impl App {
-    const fn new(config: Config, scene_data: SceneData, interrupted: Arc<AtomicBool>) -> Self {
+    fn new(config: Config, scene_data: SceneData, interrupted: Arc<AtomicBool>) -> Self {
+        let dim_right = u16::try_from(scene_data.dimensions[0]).unwrap_or(u16::MAX);
+        let dim_up = u16::try_from(scene_data.dimensions[1]).unwrap_or(u16::MAX);
+        let dim_forward = u16::try_from(scene_data.dimensions[2]).unwrap_or(u16::MAX);
+        let move_step_right = f32::from(dim_right)
+            .mul(scene_data.voxel_size)
+            .div(MOVE_STEPS);
+        let move_step_up = f32::from(dim_up).mul(scene_data.voxel_size).div(MOVE_STEPS);
+        let move_step_forward = f32::from(dim_forward)
+            .mul(scene_data.voxel_size)
+            .div(MOVE_STEPS);
+        let look_step = core::f32::consts::TAU.div(LOOK_STEPS);
         Self {
             config,
             scene_data: Some(scene_data),
@@ -42,7 +66,58 @@ impl App {
             renderer: None,
             saved: false,
             interrupted,
+            move_step_right,
+            move_step_up,
+            move_step_forward,
+            look_step,
         }
+    }
+
+    fn apply_camera_step(&mut self, code: KeyCode) -> bool {
+        let mut move_right = 0.0_f32;
+        let mut move_forward = 0.0_f32;
+        let mut move_up = 0.0_f32;
+        let mut yaw = 0.0_f32;
+        let mut pitch = 0.0_f32;
+        if code == KeyCode::KeyW {
+            move_forward = self.move_step_forward;
+        } else if code == KeyCode::KeyS {
+            move_forward = 0.0_f32.sub(self.move_step_forward);
+        } else if code == KeyCode::KeyD {
+            move_right = self.move_step_right;
+        } else if code == KeyCode::KeyA {
+            move_right = 0.0_f32.sub(self.move_step_right);
+        } else if code == KeyCode::Space {
+            move_up = self.move_step_up;
+        } else if code == KeyCode::ControlLeft || code == KeyCode::ControlRight {
+            move_up = 0.0_f32.sub(self.move_step_up);
+        } else if code == KeyCode::ArrowLeft {
+            yaw = 0.0_f32.sub(self.look_step);
+        } else if code == KeyCode::ArrowRight {
+            yaw = self.look_step;
+        } else if code == KeyCode::ArrowUp {
+            pitch = self.look_step;
+        } else if code == KeyCode::ArrowDown {
+            pitch = 0.0_f32.sub(self.look_step);
+        } else {
+            return false;
+        }
+
+        let Some(renderer) = self.renderer.as_mut() else {
+            return false;
+        };
+        renderer.apply_camera_input(move_right, move_forward, move_up, yaw, pitch);
+        let pos = renderer.camera_position();
+        let fwd = renderer.camera_forward();
+        println!(
+            "Camera: pos=({:.3}, {:.3}, {:.3}), forward=({:.3}, {:.3}, {:.3})",
+            pos[0], pos[1], pos[2], fwd[0], fwd[1], fwd[2]
+        );
+        if let Err(err) = renderer.clear_accumulator() {
+            log::error!("Failed to clear accumulator: {err}");
+        }
+        self.saved = false;
+        true
     }
 }
 fn save_image(renderer: &Renderer, output_path: &str, width: u32, height: u32) {
@@ -58,6 +133,55 @@ fn save_image(renderer: &Renderer, output_path: &str, width: u32, height: u32) {
             }
         }
         Err(err) => log::error!("Failed to get framebuffer: {err}"),
+    }
+}
+fn handle_redraw_requested(
+    saved: &mut bool,
+    config: &Config,
+    window: &Window,
+    pixels: &mut Pixels<'static>,
+    renderer: &mut Renderer,
+    event_loop: &ActiveEventLoop,
+) {
+    if renderer.sample_count() < renderer.target_samples() {
+        if let Err(err) = renderer.render_progressive() {
+            log::error!("Render error: {err}");
+            event_loop.exit();
+            return;
+        }
+        if let Ok(framebuffer) = renderer.get_framebuffer() {
+            pixels.frame_mut().copy_from_slice(&framebuffer);
+        }
+        let sample_count_u16 = u16::try_from(renderer.sample_count()).unwrap_or(u16::MAX);
+        let target_samples_u16 = u16::try_from(renderer.target_samples()).unwrap_or(u16::MAX);
+        let sample_count = f32::from(sample_count_u16);
+        let target_samples = f32::from(target_samples_u16);
+        let progress = sample_count.div(target_samples).mul(100.0);
+        window.set_title(&format!(
+            "{} - {:.1}% ({} samples)",
+            renderer.window_title(),
+            progress,
+            renderer.sample_count()
+        ));
+    } else if !*saved {
+        *saved = true;
+        if let Some(output_path) = config.render.output.as_ref() {
+            save_image(
+                renderer,
+                output_path,
+                config.render.width,
+                config.render.height,
+            );
+        }
+        window.set_title(&format!(
+            "{} - Done ({} samples)",
+            renderer.window_title(),
+            renderer.sample_count()
+        ));
+    }
+
+    if pixels.render().is_err() {
+        event_loop.exit();
     }
 }
 impl ApplicationHandler for App {
@@ -143,67 +267,50 @@ impl ApplicationHandler for App {
         _window_id: WindowId,
         event: WindowEvent,
     ) {
-        let Some(window) = self.window.as_ref() else {
-            return;
-        };
-        let Some(pixels) = self.pixels.as_mut() else {
-            return;
-        };
-        let Some(renderer) = self.renderer.as_mut() else {
-            return;
-        };
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             }
+            WindowEvent::KeyboardInput {
+                event: key_event, ..
+            } => {
+                if let PhysicalKey::Code(code) = key_event.physical_key {
+                    match key_event.state {
+                        ElementState::Pressed => {
+                            if code == KeyCode::Escape {
+                                event_loop.exit();
+                                return;
+                            }
+                            if key_event.repeat {
+                                return;
+                            }
+                            self.apply_camera_step(code);
+                        }
+                        ElementState::Released => {}
+                    }
+                }
+            }
             WindowEvent::Resized(size) => {
+                let Some(pixels) = self.pixels.as_mut() else {
+                    return;
+                };
                 if pixels.resize_surface(size.width, size.height).is_err() {
                     event_loop.exit();
                 }
             }
             WindowEvent::RedrawRequested => {
-                if renderer.sample_count() < renderer.target_samples() {
-                    if let Err(err) = renderer.render_progressive() {
-                        log::error!("Render error: {err}");
-                        event_loop.exit();
-                        return;
-                    }
-                    if let Ok(framebuffer) = renderer.get_framebuffer() {
-                        pixels.frame_mut().copy_from_slice(&framebuffer);
-                    }
-                    let sample_count_u16 =
-                        u16::try_from(renderer.sample_count()).unwrap_or(u16::MAX);
-                    let target_samples_u16 =
-                        u16::try_from(renderer.target_samples()).unwrap_or(u16::MAX);
-                    let sample_count = f32::from(sample_count_u16);
-                    let target_samples = f32::from(target_samples_u16);
-                    let progress = sample_count.div(target_samples).mul(100.0);
-                    window.set_title(&format!(
-                        "{} - {:.1}% ({} samples)",
-                        renderer.window_title(),
-                        progress,
-                        renderer.sample_count()
-                    ));
-                } else if !self.saved {
-                    self.saved = true;
-                    if let Some(output_path) = self.config.render.output.as_ref() {
-                        save_image(
-                            renderer,
-                            output_path,
-                            self.config.render.width,
-                            self.config.render.height,
-                        );
-                    }
-                    window.set_title(&format!(
-                        "{} - Done ({} samples)",
-                        renderer.window_title(),
-                        renderer.sample_count()
-                    ));
-                }
-
-                if pixels.render().is_err() {
-                    event_loop.exit();
-                }
+                let saved = &mut self.saved;
+                let config = &self.config;
+                let Some(window) = self.window.as_ref() else {
+                    return;
+                };
+                let Some(pixels) = self.pixels.as_mut() else {
+                    return;
+                };
+                let Some(renderer) = self.renderer.as_mut() else {
+                    return;
+                };
+                handle_redraw_requested(saved, config, window, pixels, renderer, event_loop);
             }
             WindowEvent::ActivationTokenDone { .. }
             | WindowEvent::Moved(_)
@@ -212,7 +319,6 @@ impl ApplicationHandler for App {
             | WindowEvent::HoveredFile(_)
             | WindowEvent::HoveredFileCancelled
             | WindowEvent::Focused(_)
-            | WindowEvent::KeyboardInput { .. }
             | WindowEvent::ModifiersChanged(_)
             | WindowEvent::Ime(_)
             | WindowEvent::CursorMoved { .. }

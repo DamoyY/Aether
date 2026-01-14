@@ -2,7 +2,7 @@ render:
   width: 1080
   height: 1080
   target_samples: 20000
-  samples_per_frame: 500
+  samples_per_frame: 100
   output: "output.png"
 
 window:

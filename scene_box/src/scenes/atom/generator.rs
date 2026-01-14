@@ -228,23 +228,18 @@ fn compute_voxels_gpu(voxels: &mut [Voxel], args: GpuArgs<'_>) -> Result<()> {
         .saturating_mul(usize::try_from(dim_z).unwrap_or(0));
     let total_size_i32 = i32::try_from(total_size).unwrap_or(i32::MAX);
     let stream = gpu.ctx.default_stream();
-    
+
     let mut d_rad_coeffs_const = gpu.density_module.get_global("c_rad_coeffs", &stream)?;
     let mut d_ang_coeffs_const = gpu.density_module.get_global("c_ang_coeffs", &stream)?;
-    
+
     let rad_bytes: &[u8] = bytemuck::cast_slice(&rad_padded);
     stream.memcpy_htod(rad_bytes, &mut d_rad_coeffs_const)?;
-    
+
     let ang_bytes: &[u8] = bytemuck::cast_slice(&ang_padded);
     stream.memcpy_htod(ang_bytes, &mut d_ang_coeffs_const)?;
-    
+
     let mut d_psi = stream.alloc_zeros::<f32>(total_size)?;
-    launch_density_kernel(
-        &gpu,
-        &stream,
-        &args,
-        &mut d_psi,
-    )?;
+    launch_density_kernel(&gpu, &stream, &args, &mut d_psi)?;
     let max_abs_psi = compute_max_abs(&gpu, &stream, &d_psi, total_size_i32)?;
     let mut d_voxels = stream.alloc_zeros::<Voxel>(total_size)?;
     launch_finalize_kernel(

@@ -1,6 +1,5 @@
 mod config;
 mod generator;
-
 use core::ops::Mul as _;
 use std::path::Path;
 
@@ -8,7 +7,6 @@ use anyhow::Result;
 use config::AtomConfig;
 
 use crate::{Camera, Light, SceneData, Voxel};
-
 pub(crate) fn generate<P: AsRef<Path>>(config_path: P) -> Result<SceneData> {
     let config = AtomConfig::load(config_path)?;
     let dim0 = usize::try_from(config.voxel.dimensions[0]).unwrap_or(usize::MAX);
@@ -32,9 +30,15 @@ pub(crate) fn generate<P: AsRef<Path>>(config_path: P) -> Result<SceneData> {
         config.orbital,
         config.material,
     )?;
-    let dim_x: f32 = u16::try_from(config.voxel.dimensions[0]).unwrap_or(u16::MAX).into();
-    let dim_y: f32 = u16::try_from(config.voxel.dimensions[1]).unwrap_or(u16::MAX).into();
-    let dim_z: f32 = u16::try_from(config.voxel.dimensions[2]).unwrap_or(u16::MAX).into();
+    let dim_x: f32 = u16::try_from(config.voxel.dimensions[0])
+        .unwrap_or(u16::MAX)
+        .into();
+    let dim_y: f32 = u16::try_from(config.voxel.dimensions[1])
+        .unwrap_or(u16::MAX)
+        .into();
+    let dim_z: f32 = u16::try_from(config.voxel.dimensions[2])
+        .unwrap_or(u16::MAX)
+        .into();
     let center = [
         dim_x.mul(config.voxel.voxel_size).mul(0.5),
         dim_y.mul(config.voxel.voxel_size).mul(0.5),
