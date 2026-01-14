@@ -18,3 +18,15 @@ Aether 是一个基于物理的高性能体积路径追踪渲染器（Volumetric
     *   **Atom 场景**：基于量子数 ($n, l, m$) 实时计算氢原子波函数密度 $|\psi|^2$，使用 GPU 加速生成体素数据（Laguerre & Legendre 多项式）。
 *   **渐进式渲染**：支持实时累积采样，随着时间推移图像质量逐渐提高。
 *   **ACES 色调映射**：内置 ACES Film 曲线色调映射和 Gamma 校正。
+
+## 例图
+
+### 1. 原子轨道:
+![使用该项目渲染的原子轨道](diagram_1.png)
+
+### 2. 基础体积渲染功能：
+![基础体积渲染功能](diagram_2.png)
+
+## 许可证
+
+本项目遵循 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) 协议。详情请参阅 [LICENSE](LICENSE) 文件。
