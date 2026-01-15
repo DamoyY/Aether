@@ -4,12 +4,12 @@ mod generator;
 use std::path::Path;
 
 use anyhow::Result;
-use config::CubeConfig;
+use config::ExampleCubeConfig;
 
 use crate::{Camera, Light, SceneData, Voxel};
 
 pub(crate) fn generate<P: AsRef<Path>>(config_path: P) -> Result<SceneData> {
-    let config = CubeConfig::load(config_path)?;
+    let config = ExampleCubeConfig::load(config_path)?;
     let dim0 = usize::try_from(config.voxel.dimensions[0]).unwrap_or(usize::MAX);
     let dim1 = usize::try_from(config.voxel.dimensions[1]).unwrap_or(usize::MAX);
     let dim2 = usize::try_from(config.voxel.dimensions[2]).unwrap_or(usize::MAX);

@@ -10,7 +10,7 @@ mod scenes {
         clippy::mod_module_files,
         reason = "To ensure a clear document structure"
     )]
-    pub(crate) mod cube;
+    pub(crate) mod example_cube;
 }
 use std::path::Path;
 
@@ -72,7 +72,7 @@ pub fn generate<P: AsRef<Path>>(path: P) -> Result<SceneData> {
         .join(format!("{scene_name}.yaml"));
     match scene_name.as_str() {
         "atom" => scenes::atom::generate(&scene_path),
-        "cube" => scenes::cube::generate(&scene_path),
+        "example_cube" => scenes::example_cube::generate(&scene_path),
         _ => bail!("Unknown scene type: {scene_name}"),
     }
 }

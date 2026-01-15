@@ -4,7 +4,7 @@ use anyhow::Result;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Copy, Deserialize)]
-pub(super) struct CubeConfig {
+pub(super) struct ExampleCubeConfig {
     pub camera: CameraConfig,
     pub light: LightConfig,
     pub voxel: VoxelConfig,
@@ -58,7 +58,7 @@ pub(super) struct GradientConfig {
     pub top: GradientMaterialConfig,
 }
 
-impl CubeConfig {
+impl ExampleCubeConfig {
     pub(super) fn load<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let config: Self = serde_yaml::from_str(&content)?;
