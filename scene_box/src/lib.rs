@@ -12,12 +12,11 @@ mod scenes {
     )]
     pub(crate) mod example_cube;
 }
-use std::path::Path;
-
 use anyhow::{Result, bail};
 use bytemuck::{Pod, Zeroable};
 use config::SceneSelector;
 use cudarc::driver::{DeviceRepr, ValidAsZeroBits};
+use std::path::Path;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct Voxel {
@@ -27,9 +26,7 @@ pub struct Voxel {
     pub anisotropy: f32,
     pub ior: f32,
 }
-// SAFETY: Voxel is #[repr(C)] and contains only f32 which is valid for GPU transfer.
 unsafe impl DeviceRepr for Voxel {}
-// SAFETY: Voxel contains only f32 fields which are valid when zero-initialized.
 unsafe impl ValidAsZeroBits for Voxel {}
 #[derive(Debug, Clone, Copy)]
 pub struct Camera {
@@ -50,7 +47,6 @@ pub struct Material {
     pub anisotropy: f32,
     pub ior: f32,
 }
-
 #[derive(Debug)]
 pub struct SceneData {
     pub voxels: Vec<Voxel>,

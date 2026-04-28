@@ -1,17 +1,16 @@
 extern crate alloc;
+use crate::ffi::{GpuRenderParams, GpuVoxelGridParams, GpuVoxelMaterial, Rgba};
 use alloc::sync::Arc;
-use core::mem::{size_of, MaybeUninit};
-use core::ptr;
 use anyhow::Result;
+use core::mem::{MaybeUninit, size_of};
+use core::ptr;
 use cudarc::driver::sys::{
+    CUDA_ARRAY3D_DESCRIPTOR, CUDA_MEMCPY3D, CUDA_RESOURCE_DESC, CUDA_TEXTURE_DESC, CUaddress_mode,
+    CUarray, CUarray_format, CUfilter_mode, CUmemorytype, CUresourcetype, CUresult, CUtexObject,
     cuArray3DCreate_v2, cuArrayDestroy, cuMemcpy3D_v2, cuTexObjectCreate, cuTexObjectDestroy,
-    CUaddress_mode, CUarray, CUarray_format, CUfilter_mode, CUmemorytype, CUresourcetype,
-    CUresult, CUtexObject, CUDA_ARRAY3D_DESCRIPTOR, CUDA_MEMCPY3D, CUDA_RESOURCE_DESC,
-    CUDA_TEXTURE_DESC,
 };
 use cudarc::driver::{CudaSlice, CudaStream};
 use scene_box::Voxel;
-use crate::ffi::{GpuRenderParams, GpuVoxelGridParams, GpuVoxelMaterial, Rgba};
 pub(crate) struct DensityTexture {
     array: CUarray,
     pub(crate) texture: CUtexObject,
@@ -40,7 +39,6 @@ impl DensityTexture {
             Flags: 0,
         };
         let mut array: CUarray = ptr::null_mut();
-        // SAFETY: cuArray3DCreate_v2 initializes the array pointer with valid CUDA array.
         let create_result =
             unsafe { cuArray3DCreate_v2(ptr::from_mut(&mut array), ptr::from_ref(&array_desc)) };
         if create_result != CUresult::CUDA_SUCCESS {
@@ -50,12 +48,9 @@ impl DensityTexture {
         }
         let mut copy_params_uninit = MaybeUninit::<CUDA_MEMCPY3D>::uninit();
         let copy_params_ptr = copy_params_uninit.as_mut_ptr();
-        // SAFETY: Zeroing raw bytes is safe; we set all necessary fields before reading.
-        // assume_init_mut is safe because all bytes are zeroed and we set required fields.
         unsafe {
             ptr::write_bytes(copy_params_ptr, 0, 1);
         }
-        // SAFETY: All bytes are zeroed and we set required fields before use.
         let copy_params = unsafe { copy_params_uninit.assume_init_mut() };
         copy_params.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
         copy_params.srcHost = densities.as_ptr().cast::<core::ffi::c_void>();
@@ -66,30 +61,26 @@ impl DensityTexture {
         copy_params.WidthInBytes = width.saturating_mul(size_of::<f32>());
         copy_params.Height = height;
         copy_params.Depth = depth;
-        // SAFETY: cuMemcpy3D_v2 copies data from host to device array.
         let copy_result = unsafe { cuMemcpy3D_v2(ptr::from_ref(copy_params)) };
         if copy_result != CUresult::CUDA_SUCCESS {
-            // SAFETY: array was successfully created above.
-            unsafe { cuArrayDestroy(array); }
+            unsafe {
+                cuArrayDestroy(array);
+            }
             return Err(anyhow::anyhow!(
                 "cuMemcpy3D_v2 failed with error code: {copy_result:?}"
             ));
         }
         let mut res_desc_uninit = MaybeUninit::<CUDA_RESOURCE_DESC>::uninit();
-        // SAFETY: Zeroing raw bytes is safe; we set all necessary fields before reading.
         unsafe {
             ptr::write_bytes(res_desc_uninit.as_mut_ptr(), 0, 1);
         }
-        // SAFETY: All bytes are zeroed and we set required fields before use.
         let res_desc = unsafe { res_desc_uninit.assume_init_mut() };
         res_desc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
         res_desc.res.array.hArray = array;
         let mut tex_desc_uninit = MaybeUninit::<CUDA_TEXTURE_DESC>::uninit();
-        // SAFETY: Zeroing raw bytes is safe; we set all necessary fields before reading.
         unsafe {
             ptr::write_bytes(tex_desc_uninit.as_mut_ptr(), 0, 1);
         }
-        // SAFETY: All bytes are zeroed and we set required fields before use.
         let tex_desc = unsafe { tex_desc_uninit.assume_init_mut() };
         tex_desc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_BORDER;
         tex_desc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_BORDER;
@@ -97,7 +88,6 @@ impl DensityTexture {
         tex_desc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
         tex_desc.flags = 0;
         let mut texture: CUtexObject = 0;
-        // SAFETY: cuTexObjectCreate creates a texture object from the resource and texture descriptors.
         let tex_result = unsafe {
             cuTexObjectCreate(
                 ptr::from_mut(&mut texture),
@@ -107,8 +97,9 @@ impl DensityTexture {
             )
         };
         if tex_result != CUresult::CUDA_SUCCESS {
-            // SAFETY: array was successfully created above.
-            unsafe { cuArrayDestroy(array); }
+            unsafe {
+                cuArrayDestroy(array);
+            }
             return Err(anyhow::anyhow!(
                 "cuTexObjectCreate failed with error code: {tex_result:?}"
             ));
@@ -118,10 +109,12 @@ impl DensityTexture {
 }
 impl Drop for DensityTexture {
     fn drop(&mut self) {
-        // SAFETY: texture was successfully created in new().
-        unsafe { cuTexObjectDestroy(self.texture); }
-        // SAFETY: array was successfully created in new().
-        unsafe { cuArrayDestroy(self.array); }
+        unsafe {
+            cuTexObjectDestroy(self.texture);
+        }
+        unsafe {
+            cuArrayDestroy(self.array);
+        }
     }
 }
 pub(crate) struct GpuResources {
@@ -149,7 +142,6 @@ impl GpuResources {
         let pixel_count = width_usize
             .checked_mul(height_usize)
             .ok_or_else(|| anyhow::anyhow!("pixel count overflow"))?;
-
         let density_texture = DensityTexture::new(
             voxel_data,
             [voxel_params.dim_x, voxel_params.dim_y, voxel_params.dim_z],

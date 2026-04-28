@@ -1,16 +1,13 @@
-use core::ops::{Add as _, Div as _, Mul as _, Sub as _};
-
-use anyhow::Result;
-use cudarc::driver::{LaunchConfig, PushKernelArg as _};
-use glam::Vec3;
-use scene_box::SceneData;
-
 use crate::{
     config::Config,
     cuda::{context::Gpu, memory::GpuResources},
     ffi::{GpuRenderParams, GpuVoxelGridParams},
 };
-
+use anyhow::Result;
+use core::ops::{Add as _, Div as _, Mul as _, Sub as _};
+use cudarc::driver::{LaunchConfig, PushKernelArg as _};
+use glam::Vec3;
+use scene_box::SceneData;
 pub(crate) struct Camera {
     position: Vec3,
     forward: Vec3,
@@ -25,7 +22,6 @@ impl Camera {
         let forward = target.sub(position).normalize();
         let right = forward.cross(world_up).normalize();
         let up = right.cross(forward).normalize();
-
         Self {
             position,
             forward,
@@ -36,7 +32,6 @@ impl Camera {
             pitch: forward.y.asin(),
         }
     }
-
     fn rebuild_basis(&mut self) {
         const EPS: f32 = 1.0e-6;
         let (sin_pitch, cos_pitch) = self.pitch.sin_cos();
@@ -60,12 +55,10 @@ impl Camera {
         } else {
             world_up
         };
-
         self.forward = forward;
         self.right = right;
         self.up = up;
     }
-
     fn look(&mut self, yaw_delta: f32, pitch_delta: f32) {
         let max_pitch = core::f32::consts::FRAC_PI_2.sub(0.01);
         let min_pitch = 0.0_f32.sub(max_pitch);
@@ -73,7 +66,6 @@ impl Camera {
         self.pitch = self.pitch.add(pitch_delta).clamp(min_pitch, max_pitch);
         self.rebuild_basis();
     }
-
     fn translate(&mut self, delta: Vec3) {
         self.position = self.position.add(delta);
     }
@@ -174,7 +166,6 @@ impl Renderer {
             current_sample: 0,
         })
     }
-
     pub(crate) fn clear_accumulator(&mut self) -> Result<()> {
         let block_size = (16_u32, 16_u32, 1_u32);
         let grid_size = (
@@ -191,13 +182,11 @@ impl Renderer {
         builder.arg(&mut self.resources.accumulator);
         builder.arg(&self.resources.width);
         builder.arg(&self.resources.height);
-        // SAFETY: The kernel arguments match the expected types and the launch configuration is valid.
         unsafe { builder.launch(cfg) }?;
         self.ctx.stream.synchronize()?;
         self.current_sample = 0;
         Ok(())
     }
-
     pub(crate) fn render_progressive(&mut self) -> Result<()> {
         let block_size = (16_u32, 16_u32, 1_u32);
         let grid_size = (
@@ -250,15 +239,12 @@ impl Renderer {
             builder.arg(&self.resources.material_buffer);
             builder.arg(&self.resources.voxel_params);
             builder.arg(&self.resources.render_params);
-            // SAFETY: The kernel arguments match the expected types and the launch configuration is valid.
             unsafe { builder.launch(cfg) }?;
             self.current_sample = self.current_sample.saturating_add(1);
         }
-
         self.ctx.stream.synchronize()?;
         Ok(())
     }
-
     pub(crate) fn get_framebuffer(&self) -> Result<Vec<u8>> {
         let float_data = self.resources.read_framebuffer(&self.ctx.stream)?;
         let capacity = float_data
@@ -274,19 +260,15 @@ impl Renderer {
         }
         Ok(output)
     }
-
     pub(crate) const fn sample_count(&self) -> u32 {
         self.current_sample
     }
-
     pub(crate) const fn target_samples(&self) -> u32 {
         self.config.render.target_samples
     }
-
     pub(crate) fn window_title(&self) -> &str {
         &self.config.window.title
     }
-
     pub(crate) const fn camera_position(&self) -> [f32; 3] {
         [
             self.camera.position.x,
@@ -294,7 +276,6 @@ impl Renderer {
             self.camera.position.z,
         ]
     }
-
     pub(crate) const fn camera_forward(&self) -> [f32; 3] {
         [
             self.camera.forward.x,
@@ -302,7 +283,6 @@ impl Renderer {
             self.camera.forward.z,
         ]
     }
-
     pub(crate) fn apply_camera_input(
         &mut self,
         move_right: f32,
@@ -315,7 +295,6 @@ impl Renderer {
         if yaw_delta != 0.0 || pitch_delta != 0.0 {
             self.camera.look(yaw_delta, pitch_delta);
         }
-
         let mut forward_flat = Vec3::new(self.camera.forward.x, 0.0, self.camera.forward.z);
         if forward_flat.length_squared() > EPS {
             forward_flat = forward_flat.normalize();

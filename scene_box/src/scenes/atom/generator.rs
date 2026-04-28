@@ -1,17 +1,15 @@
+use super::config::{MaterialConfig, OrbitalConfig};
+use crate::Voxel;
+use anyhow::Result;
+use bytemuck::{Pod, Zeroable};
 use core::{
     f32::consts::PI,
     ops::{Add as _, Div as _, Mul as _, Sub as _},
 };
-
-use anyhow::Result;
-use bytemuck::{Pod, Zeroable};
 use cudarc::{
     driver::{CudaContext, DeviceRepr, LaunchConfig, PushKernelArg as _},
     nvrtc::Ptx,
 };
-
-use super::config::{MaterialConfig, OrbitalConfig};
-use crate::Voxel;
 const MAX_DEGREE: usize = 32;
 const BLOCK_SIZE: u32 = 256;
 #[repr(C)]
@@ -25,7 +23,6 @@ struct MaterialParams {
     anisotropy: f32,
     ior: f32,
 }
-// SAFETY: MaterialParams is #[repr(C)] and contains only f32 which is valid for GPU transfer.
 unsafe impl DeviceRepr for MaterialParams {}
 fn factorial(n: u32) -> f32 {
     let mut result = 1.0_f32;
@@ -204,7 +201,6 @@ impl GpuContext {
         })
     }
 }
-
 fn compute_voxels_gpu(voxels: &mut [Voxel], args: GpuArgs<'_>) -> Result<()> {
     let gpu = GpuContext::new()?;
     let mut rad_padded = [0.0_f32; MAX_DEGREE];
@@ -228,16 +224,12 @@ fn compute_voxels_gpu(voxels: &mut [Voxel], args: GpuArgs<'_>) -> Result<()> {
         .saturating_mul(usize::try_from(dim_z).unwrap_or(0));
     let total_size_i32 = i32::try_from(total_size).unwrap_or(i32::MAX);
     let stream = gpu.ctx.default_stream();
-
     let mut d_rad_coeffs_const = gpu.density_module.get_global("c_rad_coeffs", &stream)?;
     let mut d_ang_coeffs_const = gpu.density_module.get_global("c_ang_coeffs", &stream)?;
-
     let rad_bytes: &[u8] = bytemuck::cast_slice(&rad_padded);
     stream.memcpy_htod(rad_bytes, &mut d_rad_coeffs_const)?;
-
     let ang_bytes: &[u8] = bytemuck::cast_slice(&ang_padded);
     stream.memcpy_htod(ang_bytes, &mut d_ang_coeffs_const)?;
-
     let mut d_psi = stream.alloc_zeros::<f32>(total_size)?;
     launch_density_kernel(&gpu, &stream, &args, &mut d_psi)?;
     let max_abs_psi = compute_max_abs(&gpu, &stream, &d_psi, total_size_i32)?;
@@ -256,7 +248,6 @@ fn compute_voxels_gpu(voxels: &mut [Voxel], args: GpuArgs<'_>) -> Result<()> {
     voxels.copy_from_slice(&result);
     Ok(())
 }
-
 fn launch_density_kernel(
     gpu: &GpuContext,
     stream: &alloc::sync::Arc<cudarc::driver::CudaStream>,
@@ -299,13 +290,11 @@ fn launch_density_kernel(
     builder.arg(&args.voxel_size);
     builder.arg(&l_i);
     builder.arg(&args.m_quantum);
-    // SAFETY: Kernel parameters match the CUDA function signature
     unsafe {
         builder.launch(density_config)?;
     }
     Ok(())
 }
-
 fn compute_max_abs(
     gpu: &GpuContext,
     stream: &alloc::sync::Arc<cudarc::driver::CudaStream>,
@@ -330,7 +319,6 @@ fn compute_max_abs(
     reduce_builder.arg(d_psi);
     reduce_builder.arg(&mut d_partial_max);
     reduce_builder.arg(&total_size_i32);
-    // SAFETY: Kernel parameters match the CUDA function signature
     unsafe {
         reduce_builder.launch(reduce_config)?;
     }
@@ -346,7 +334,6 @@ fn compute_max_abs(
         final_builder.arg(&d_partial_max);
         final_builder.arg(&mut d_final_max);
         final_builder.arg(&num_blocks_i32);
-        // SAFETY: Kernel parameters match the CUDA function signature
         unsafe {
             final_builder.launch(final_reduce_config)?;
         }
@@ -357,7 +344,6 @@ fn compute_max_abs(
         Ok(result.first().copied().unwrap_or(1.0_f32))
     }
 }
-
 fn launch_finalize_kernel(
     gpu: &GpuContext,
     stream: &alloc::sync::Arc<cudarc::driver::CudaStream>,
@@ -383,7 +369,6 @@ fn launch_finalize_kernel(
     builder.arg(&max_abs_psi);
     builder.arg(material);
     builder.arg(&total_size_i32);
-    // SAFETY: Kernel parameters match the CUDA function signature
     unsafe {
         builder.launch(finalize_config)?;
     }

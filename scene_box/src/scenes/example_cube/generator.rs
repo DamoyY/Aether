@@ -1,8 +1,6 @@
-use core::ops::{Add as _, Div as _, Mul as _, Sub as _};
-
 use super::config::{GradientConfig, MaterialConfig};
 use crate::Voxel;
-
+use core::ops::{Add as _, Div as _, Mul as _, Sub as _};
 fn index(coord_x: u32, coord_y: u32, coord_z: u32, dims: [u32; 3]) -> usize {
     let raw_idx = coord_z
         .saturating_mul(dims[1])
@@ -11,11 +9,9 @@ fn index(coord_x: u32, coord_y: u32, coord_z: u32, dims: [u32; 3]) -> usize {
         .saturating_add(coord_x);
     usize::try_from(raw_idx).unwrap_or(usize::MAX)
 }
-
 fn lerp(from: f32, to: f32, ratio: f32) -> f32 {
     from.add(to.sub(from).mul(ratio))
 }
-
 fn lerp3(from: [f32; 3], to: [f32; 3], ratio: f32) -> [f32; 3] {
     [
         lerp(from[0], to[0], ratio),
@@ -23,7 +19,6 @@ fn lerp3(from: [f32; 3], to: [f32; 3], ratio: f32) -> [f32; 3] {
         lerp(from[2], to[2], ratio),
     ]
 }
-
 pub(super) fn generate(
     voxels: &mut [Voxel],
     dims: [u32; 3],
@@ -35,7 +30,6 @@ pub(super) fn generate(
 ) {
     let y_min = center[1].sub(half_size);
     let y_range = half_size.mul(2.0);
-
     for coord_z in 0..dims[2] {
         for coord_y in 0..dims[1] {
             for coord_x in 0..dims[0] {
@@ -56,11 +50,9 @@ pub(super) fn generate(
                     let max_dist = dist_x.max(dist_y).max(dist_z);
                     let dist = max_dist.div(half_size);
                     let intensity = 1.0_f32.sub(dist.mul(0.3));
-
                     let y_ratio = world_y.sub(y_min).div(y_range).clamp(0.0, 1.0);
                     let albedo = lerp3(gradient.bottom.albedo, gradient.top.albedo, y_ratio);
                     let sigma_t = lerp3(gradient.bottom.sigma_t, gradient.top.sigma_t, y_ratio);
-
                     let idx = index(coord_x, coord_y, coord_z, dims);
                     if let Some(slot) = voxels.get_mut(idx) {
                         *slot = Voxel {

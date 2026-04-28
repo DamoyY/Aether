@@ -6,11 +6,11 @@ build = "build.rs"
 
 [dependencies]
 scene_box = { path = "../scene_box" }
-cudarc = { version = "*", features = ["cuda-13010"] }
+cudarc = { version = "*", features = ["cuda-version-from-build-system"] }
 winit = "*"
 pixels = "*"
 serde = { version = "*", features = ["derive"] }
-serde_yaml = "*"
+serde_yaml = { package = "serde_yaml_ng", version = "*" }
 glam = "*"
 bytemuck = { version = "*", features = ["derive"] }
 anyhow = "*"
@@ -19,7 +19,7 @@ env_logger = "*"
 rand = "*"
 image = { version = "*", default-features = false, features = ["png"] }
 ctrlc = "*"
-mimalloc = "*"
+mimalloc = { version = "*", features = ["v3"] }
 
 [build-dependencies]
 glob = "*"

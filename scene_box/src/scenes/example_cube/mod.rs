@@ -1,13 +1,9 @@
 mod config;
 mod generator;
-
-use std::path::Path;
-
+use crate::{Camera, Light, SceneData, Voxel};
 use anyhow::Result;
 use config::ExampleCubeConfig;
-
-use crate::{Camera, Light, SceneData, Voxel};
-
+use std::path::Path;
 pub(crate) fn generate<P: AsRef<Path>>(config_path: P) -> Result<SceneData> {
     let config = ExampleCubeConfig::load(config_path)?;
     let dim0 = usize::try_from(config.voxel.dimensions[0]).unwrap_or(usize::MAX);

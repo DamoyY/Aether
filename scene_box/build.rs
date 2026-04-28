@@ -3,7 +3,6 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
 };
-
 fn compile_cuda(nvcc: &str, src: &Path, out: &Path) -> Result<(), Box<dyn core::error::Error>> {
     let src_str = src.to_str().ok_or("Invalid CUDA source path")?;
     let out_str = out.to_str().ok_or("Invalid PTX output path")?;
@@ -30,7 +29,6 @@ fn compile_cuda(nvcc: &str, src: &Path, out: &Path) -> Result<(), Box<dyn core::
     }
     Ok(())
 }
-
 fn main() -> Result<(), Box<dyn core::error::Error>> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);

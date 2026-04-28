@@ -4,13 +4,12 @@ mod cuda;
 mod ffi;
 mod render;
 use alloc::sync::Arc;
+use anyhow::Result;
+use config::Config;
 use core::{
     ops::{Div as _, Mul as _, Sub as _},
     sync::atomic::{AtomicBool, Ordering},
 };
-
-use anyhow::Result;
-use config::Config;
 use image::{ImageBuffer, Rgba};
 use log::info;
 use mimalloc::MiMalloc;
@@ -25,13 +24,10 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
 };
-
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
-
 const MOVE_STEPS: f32 = 20.0;
 const LOOK_STEPS: f32 = 30.0;
-
 struct App {
     config: Config,
     scene_data: Option<SceneData>,
@@ -72,7 +68,6 @@ impl App {
             look_step,
         }
     }
-
     fn apply_camera_step(&mut self, code: KeyCode) -> bool {
         let mut move_right = 0.0_f32;
         let mut move_forward = 0.0_f32;
@@ -102,7 +97,6 @@ impl App {
         } else {
             return false;
         }
-
         let Some(renderer) = self.renderer.as_mut() else {
             return false;
         };
@@ -179,14 +173,12 @@ fn handle_redraw_requested(
             renderer.sample_count()
         ));
     }
-
     if pixels.render().is_err() {
         event_loop.exit();
     }
 }
 impl ApplicationHandler for App {
     fn new_events(&mut self, _event_loop: &ActiveEventLoop, _cause: StartCause) {}
-
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window_attributes = Window::default_attributes()
             .with_title(&self.config.window.title)
@@ -219,13 +211,11 @@ impl ApplicationHandler for App {
                 return;
             }
         };
-
         let Some(scene_data) = self.scene_data.take() else {
             log::error!("Scene data already consumed");
             event_loop.exit();
             return;
         };
-
         let mut renderer = match Renderer::new(self.config.clone(), &scene_data) {
             Ok(rend) => rend,
             Err(err) => {
@@ -239,18 +229,13 @@ impl ApplicationHandler for App {
             event_loop.exit();
             return;
         }
-
         info!("Renderer initialized");
-
         window.set_visible(true);
-
         self.window = Some(window);
         self.pixels = Some(pixels);
         self.renderer = Some(renderer);
     }
-
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, _event: ()) {}
-
     fn device_event(
         &mut self,
         _event_loop: &ActiveEventLoop,
@@ -258,9 +243,7 @@ impl ApplicationHandler for App {
         _event: DeviceEvent,
     ) {
     }
-
     fn suspended(&mut self, _event_loop: &ActiveEventLoop) {}
-
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -338,7 +321,6 @@ impl ApplicationHandler for App {
             | WindowEvent::Occluded(_) => {}
         }
     }
-
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         if self.interrupted.load(Ordering::Relaxed) && !self.saved {
             self.saved = true;
@@ -366,9 +348,7 @@ impl ApplicationHandler for App {
             window.request_redraw();
         }
     }
-
     fn memory_warning(&mut self, _event_loop: &ActiveEventLoop) {}
-
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {}
 }
 fn main() -> Result<()> {

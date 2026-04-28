@@ -1,0 +1,909 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>原子轨道可视化</title>
+    <style>
+      body {
+        margin: 0;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        background-color: #000000;
+        color: #ffffff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      #container {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 1;
+      }
+
+      #controls {
+        position: absolute;
+        top: 15px;
+        left: 15px;
+        z-index: 2;
+        background-color: rgba(40, 40, 40, 0.8);
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      label {
+        font-weight: bold;
+      }
+
+      select,
+      input,
+      button {
+        padding: 8px;
+        border-radius: 4px;
+        border: 1px solid #555;
+        background-color: #333;
+        color: #eee;
+        width: 200px;
+      }
+
+      button {
+        cursor: pointer;
+        background-color: #007bff;
+        border-color: #007bff;
+        font-weight: bold;
+      }
+
+      button:hover {
+        background-color: #0056b3;
+      }
+
+      #status {
+        margin-top: 5px;
+        color: #ffc107;
+        height: 1em;
+      }
+
+      .info {
+        position: absolute;
+        bottom: 10px;
+        right: 10px;
+        z-index: 2;
+        color: #aaa;
+        font-size: 12px;
+        text-align: right;
+      }
+
+      .legend {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 5px;
+        font-size: 12px;
+      }
+
+      .gradient-bar {
+        width: 100px;
+        height: 10px;
+        background: linear-gradient(
+          90deg,
+          oklch(59.667% 0.22126 258.047),
+          oklch(51.028% 0.00006 271.152),
+          oklch(96.798% 0.21094 109.783)
+        );
+        border-radius: 2px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="container"></div>
+
+    <div id="controls">
+      <div>
+        <label for="n-input">量子数 n:</label>
+        <input type="number" id="n-input" value="2" min="1" step="1" />
+      </div>
+      <div>
+        <label for="l-input">量子数 l:</label>
+        <input type="number" id="l-input" value="1" min="0" step="1" />
+      </div>
+      <div>
+        <label for="m-input">量子数 m:</label>
+        <input type="number" id="m-input" value="0" step="1" />
+      </div>
+      <div>
+        <label for="count-input">点云数量:</label>
+        <input type="number" id="count-input" value="100000" min="1" step="1" />
+      </div>
+      <button id="generate-btn">生成轨道</button>
+      <div class="legend">
+        <span>负</span>
+        <div class="gradient-bar"></div>
+        <span>正</span>
+      </div>
+      <div id="status"></div>
+    </div>
+
+    <div class="info">
+      <div>颜色代表波函数值 (ψ)</div>
+      <div>左键旋转 | 右键平移 | 滚轮缩放</div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+      let scene, camera, renderer, controls, pointsObject;
+      const container = document.getElementById("container");
+      const statusDiv = document.getElementById("status");
+      const generateButton = document.getElementById("generate-btn");
+      const frustumSize = 60;
+      const a0 = 1;
+      const Z = 1;
+      const colorNegative = new THREE.Color(0x0077ff);
+      const colorPositive = new THREE.Color(0xffff00);
+      const workgroupSize = 256;
+      const uniformBufferSize = 64;
+      const maxBatchSize = 262144;
+      const minBatchSize = 32768;
+
+      let webGpuInitPromise = null;
+      let webGpuAvailable = false;
+      let gpuDevice = null;
+      let gpuPipeline = null;
+      let gpuBindGroupLayout = null;
+      let gpuResources = null;
+      let generating = false;
+      function factorial(n) {
+        let result = 1;
+        for (let i = 2; i <= n; i++) {
+          result *= i;
+        }
+        return result;
+      }
+
+      function associatedLegendre(l, m, x) {
+        let pmm = 1.0;
+        if (m > 0) {
+          const somx2 = Math.sqrt((1 - x) * (1 + x));
+          let fact = 1.0;
+          for (let i = 1; i <= m; i++) {
+            pmm *= -fact * somx2;
+            fact += 2.0;
+          }
+        }
+        if (l === m) {
+          return pmm;
+        }
+        let pmmp1 = x * (2 * m + 1) * pmm;
+        if (l === m + 1) {
+          return pmmp1;
+        }
+        let pll = 0.0;
+        for (let ll = m + 2; ll <= l; ll++) {
+          pll = ((2 * ll - 1) * x * pmmp1 - (ll + m - 1) * pmm) / (ll - m);
+          pmm = pmmp1;
+          pmmp1 = pll;
+        }
+        return pll;
+      }
+
+      function generalizedLaguerre(k, alpha, x) {
+        if (k === 0) {
+          return 1;
+        }
+        if (k === 1) {
+          return 1 + alpha - x;
+        }
+        let lkm2 = 1;
+        let lkm1 = 1 + alpha - x;
+        for (let i = 2; i <= k; i++) {
+          const lk =
+            ((2 * i - 1 + alpha - x) * lkm1 - (i - 1 + alpha) * lkm2) / i;
+          lkm2 = lkm1;
+          lkm1 = lk;
+        }
+        return lkm1;
+      }
+
+      function computeNormalization(n, l, m) {
+        const absM = Math.abs(m);
+        const rhoFactor = (2 * Z) / (n * a0);
+        const radialNorm = Math.sqrt(
+          Math.pow(rhoFactor, 3) *
+            (factorial(n - l - 1) / (2 * n * factorial(n + l))),
+        );
+        const angularNorm = Math.sqrt(
+          ((2 * l + 1) / (4 * Math.PI)) *
+            (factorial(l - absM) / factorial(l + absM)),
+        );
+        return { absM, rhoFactor, radialNorm, angularNorm };
+      }
+
+      function createWaveFunction(n, l, m) {
+        const { absM, rhoFactor, radialNorm, angularNorm } =
+          computeNormalization(n, l, m);
+        return (r, theta, phi) => {
+          const rho = rhoFactor * r;
+          const radial =
+            radialNorm *
+            Math.exp(-rho / 2) *
+            Math.pow(rho, l) *
+            generalizedLaguerre(n - l - 1, 2 * l + 1, rho);
+          const legendre = associatedLegendre(l, absM, Math.cos(theta));
+          if (m > 0) {
+            return (
+              radial *
+              Math.sqrt(2) *
+              angularNorm *
+              legendre *
+              Math.cos(absM * phi)
+            );
+          }
+          if (m < 0) {
+            return (
+              radial *
+              Math.sqrt(2) *
+              angularNorm *
+              legendre *
+              Math.sin(absM * phi)
+            );
+          }
+          return radial * angularNorm * legendre;
+        };
+      }
+
+      function estimateMaxRadius(n) {
+        return Math.max(4, 6 * n * n);
+      }
+
+      function estimateProbMax(n, l, m, maxR, waveFunction) {
+        const radialSteps = Math.max(40, n * 15);
+        const thetaSteps = 24;
+        const phiSteps = m === 0 ? 1 : 24;
+        let maxProb = 0;
+        for (let i = 0; i <= radialSteps; i++) {
+          const r = (i / radialSteps) * maxR;
+          for (let j = 0; j <= thetaSteps; j++) {
+            const theta = (Math.PI * j) / thetaSteps;
+            for (let k = 0; k <= phiSteps; k++) {
+              const phi = (2 * Math.PI * k) / phiSteps;
+              const psi = waveFunction(r, theta, phi);
+              const prob = psi * psi;
+              if (prob > maxProb) {
+                maxProb = prob;
+              }
+            }
+          }
+        }
+        if (maxProb <= 0) {
+          return 1e-12;
+        }
+        return maxProb * 1.2;
+      }
+
+      // --- 初始化函数 ---
+      function init() {
+        scene = new THREE.Scene();
+
+        const aspect = container.clientWidth / container.clientHeight;
+        camera = new THREE.OrthographicCamera(
+          (frustumSize * aspect) / -2,
+          (frustumSize * aspect) / 2,
+          frustumSize / 2,
+          frustumSize / -2,
+          0.1,
+          1000,
+        );
+        camera.position.z = 30;
+
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        const axesHelper = new THREE.AxesHelper(15);
+        scene.add(axesHelper);
+
+        generateButton.addEventListener("click", () => {
+          generateOrbital().catch((error) => {
+            console.error(error);
+            statusDiv.textContent = "生成失败，请查看控制台。";
+          });
+        });
+        window.addEventListener("resize", onWindowResize, false);
+
+        initWebGPU().catch((error) => {
+          console.warn("WebGPU 初始化失败:", error);
+        });
+        generateOrbital().catch((error) => {
+          console.error(error);
+          statusDiv.textContent = "生成失败，请查看控制台。";
+        });
+      }
+
+      function onWindowResize() {
+        const aspect = container.clientWidth / container.clientHeight;
+        camera.left = (frustumSize * aspect) / -2;
+        camera.right = (frustumSize * aspect) / 2;
+        camera.top = frustumSize / 2;
+        camera.bottom = frustumSize / -2;
+        camera.updateProjectionMatrix();
+
+        renderer.setSize(container.clientWidth, container.clientHeight);
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+
+      function updatePointsGeometry(pointsArray, colorsArray) {
+        if (pointsObject) {
+          scene.remove(pointsObject);
+          pointsObject.geometry.dispose();
+          pointsObject.material.dispose();
+        }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute(
+          "position",
+          new THREE.Float32BufferAttribute(pointsArray, 3),
+        );
+        geometry.setAttribute(
+          "color",
+          new THREE.Float32BufferAttribute(colorsArray, 3),
+        );
+        const material = new THREE.PointsMaterial({
+          vertexColors: true,
+          sizeAttenuation: true,
+        });
+        pointsObject = new THREE.Points(geometry, material);
+        scene.add(pointsObject);
+      }
+
+      async function initWebGPU() {
+        if (webGpuInitPromise) {
+          return webGpuInitPromise;
+        }
+        if (!navigator.gpu) {
+          webGpuAvailable = false;
+          return false;
+        }
+        webGpuInitPromise = (async () => {
+          const adapter = await navigator.gpu.requestAdapter();
+          if (!adapter) {
+            webGpuAvailable = false;
+            return false;
+          }
+          gpuDevice = await adapter.requestDevice();
+          gpuPipeline = createComputePipeline(gpuDevice);
+          gpuBindGroupLayout = gpuPipeline.getBindGroupLayout(0);
+          webGpuAvailable = true;
+          return true;
+        })();
+        return webGpuInitPromise;
+      }
+
+      function createComputePipeline(device) {
+        const shaderModule = device.createShaderModule({
+          code: `
+struct Params {
+  f0: vec4<f32>,
+  f1: vec4<f32>,
+  i0: vec4<i32>,
+  i1: vec4<u32>,
+}
+
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read_write> positions: array<vec4<f32>>;
+@group(0) @binding(2) var<storage, read_write> colors: array<vec4<f32>>;
+
+fn xorshift(state: ptr<function, u32>) -> u32 {
+  var x = *state;
+  x = x ^ (x << 13u);
+  x = x ^ (x >> 17u);
+  x = x ^ (x << 5u);
+  *state = x;
+  return x;
+}
+
+fn rand(state: ptr<function, u32>) -> f32 {
+  return f32(xorshift(state)) / 4294967296.0;
+}
+
+fn generalizedLaguerre(k: i32, alpha: f32, x: f32) -> f32 {
+  if (k == 0) {
+    return 1.0;
+  }
+  if (k == 1) {
+    return 1.0 + alpha - x;
+  }
+  var lkm2 = 1.0;
+  var lkm1 = 1.0 + alpha - x;
+  var i = 2;
+  loop {
+    if (i > k) {
+      break;
+    }
+    let lk = ((f32(2 * i - 1) + alpha - x) * lkm1 - (f32(i - 1) + alpha) * lkm2) / f32(i);
+    lkm2 = lkm1;
+    lkm1 = lk;
+    i = i + 1;
+  }
+  return lkm1;
+}
+
+fn associatedLegendre(l: i32, m: i32, x: f32) -> f32 {
+  var pmm = 1.0;
+  if (m > 0) {
+    let somx2 = sqrt((1.0 - x) * (1.0 + x));
+    var fact = 1.0;
+    var i = 1;
+    loop {
+      if (i > m) {
+        break;
+      }
+      pmm = pmm * (-fact * somx2);
+      fact = fact + 2.0;
+      i = i + 1;
+    }
+  }
+  if (l == m) {
+    return pmm;
+  }
+  var pmmp1 = x * f32(2 * m + 1) * pmm;
+  if (l == m + 1) {
+    return pmmp1;
+  }
+  var pll = 0.0;
+  var ll = m + 2;
+  loop {
+    if (ll > l) {
+      break;
+    }
+    pll = (f32(2 * ll - 1) * x * pmmp1 - f32(ll + m - 1) * pmm) / f32(ll - m);
+    pmm = pmmp1;
+    pmmp1 = pll;
+    ll = ll + 1;
+  }
+  return pll;
+}
+
+@compute @workgroup_size(${workgroupSize})
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let idx = gid.x;
+  let total = params.i1.x;
+  if (idx >= total) {
+    return;
+  }
+
+  var rng = params.i1.y ^ (idx * 747796405u + 2891336453u);
+  let u = rand(&rng);
+  let v = rand(&rng);
+  let w = rand(&rng);
+  let t = rand(&rng);
+
+  let maxR = params.f0.w;
+  let r = maxR * pow(u, 0.33333334);
+  let theta = acos(2.0 * v - 1.0);
+  let phi = 6.283185307179586 * w;
+
+  let sinTheta = sin(theta);
+  let x = r * sinTheta * cos(phi);
+  let y = r * sinTheta * sin(phi);
+  let z = r * cos(theta);
+
+  let n = params.i0.x;
+  let l = params.i0.y;
+  let m = params.i0.z;
+  let absM = params.i0.w;
+
+  let rho = params.f0.x * r;
+  let radial = params.f0.y * exp(-rho * 0.5) * pow(rho, f32(l))
+    * generalizedLaguerre(n - l - 1, f32(2 * l + 1), rho);
+  let legendre = associatedLegendre(l, absM, cos(theta));
+  var psi = radial * params.f0.z * legendre;
+  if (m > 0) {
+    psi = psi * 1.41421356 * cos(f32(absM) * phi);
+  }
+  if (m < 0) {
+    psi = psi * 1.41421356 * sin(f32(absM) * phi);
+  }
+
+  let prob = psi * psi;
+  let threshold = t * params.f1.x;
+  let accepted = threshold < prob;
+  if (accepted) {
+    let maxAmp = params.f1.y;
+    let tcolor = clamp(0.5 * (psi / maxAmp + 1.0), 0.0, 1.0);
+    let colorNegative = vec3<f32>(0.0, 0.46666667, 1.0);
+    let colorPositive = vec3<f32>(1.0, 1.0, 0.0);
+    let color = colorNegative + (colorPositive - colorNegative) * tcolor;
+    positions[idx] = vec4<f32>(x, y, z, 1.0);
+    colors[idx] = vec4<f32>(color, 1.0);
+  } else {
+    positions[idx] = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    colors[idx] = vec4<f32>(0.0, 0.0, 0.0, 0.0);
+  }
+}
+`,
+        });
+        return device.createComputePipeline({
+          layout: "auto",
+          compute: { module: shaderModule, entryPoint: "main" },
+        });
+      }
+
+      function ensureGpuResources(capacity) {
+        if (gpuResources && gpuResources.capacity >= capacity) {
+          return gpuResources;
+        }
+        if (gpuResources) {
+          gpuResources.positionsBuffer.destroy();
+          gpuResources.colorsBuffer.destroy();
+          gpuResources.readbackPositions.destroy();
+          gpuResources.readbackColors.destroy();
+          gpuResources.uniformBuffer.destroy();
+        }
+        const bufferSize = capacity * 16;
+        const positionsBuffer = gpuDevice.createBuffer({
+          size: bufferSize,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+        });
+        const colorsBuffer = gpuDevice.createBuffer({
+          size: bufferSize,
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+        });
+        const readbackPositions = gpuDevice.createBuffer({
+          size: bufferSize,
+          usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        });
+        const readbackColors = gpuDevice.createBuffer({
+          size: bufferSize,
+          usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        });
+        const uniformBuffer = gpuDevice.createBuffer({
+          size: uniformBufferSize,
+          usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        const bindGroup = gpuDevice.createBindGroup({
+          layout: gpuBindGroupLayout,
+          entries: [
+            { binding: 0, resource: { buffer: uniformBuffer } },
+            { binding: 1, resource: { buffer: positionsBuffer } },
+            { binding: 2, resource: { buffer: colorsBuffer } },
+          ],
+        });
+        gpuResources = {
+          capacity,
+          positionsBuffer,
+          colorsBuffer,
+          readbackPositions,
+          readbackColors,
+          uniformBuffer,
+          bindGroup,
+        };
+        return gpuResources;
+      }
+
+      async function runGpuBatch(total, uniformData) {
+        const resources = ensureGpuResources(total);
+        gpuDevice.queue.writeBuffer(resources.uniformBuffer, 0, uniformData);
+        const commandEncoder = gpuDevice.createCommandEncoder();
+        const pass = commandEncoder.beginComputePass();
+        pass.setPipeline(gpuPipeline);
+        pass.setBindGroup(0, resources.bindGroup);
+        pass.dispatchWorkgroups(Math.ceil(total / workgroupSize));
+        pass.end();
+        const copySize = total * 16;
+        commandEncoder.copyBufferToBuffer(
+          resources.positionsBuffer,
+          0,
+          resources.readbackPositions,
+          0,
+          copySize,
+        );
+        commandEncoder.copyBufferToBuffer(
+          resources.colorsBuffer,
+          0,
+          resources.readbackColors,
+          0,
+          copySize,
+        );
+        gpuDevice.queue.submit([commandEncoder.finish()]);
+        await Promise.all([
+          resources.readbackPositions.mapAsync(GPUMapMode.READ, 0, copySize),
+          resources.readbackColors.mapAsync(GPUMapMode.READ, 0, copySize),
+        ]);
+        const positionsCopy = resources.readbackPositions
+          .getMappedRange(0, copySize)
+          .slice(0);
+        const colorsCopy = resources.readbackColors
+          .getMappedRange(0, copySize)
+          .slice(0);
+        resources.readbackPositions.unmap();
+        resources.readbackColors.unmap();
+        return {
+          positions: new Float32Array(positionsCopy),
+          colors: new Float32Array(colorsCopy),
+        };
+      }
+
+      function buildUniformData({
+        rhoFactor,
+        radialNorm,
+        angularNorm,
+        maxR,
+        probMax,
+        maxAmp,
+        n,
+        l,
+        m,
+        absM,
+        total,
+        seed,
+      }) {
+        const uniformData = new ArrayBuffer(uniformBufferSize);
+        const f32 = new Float32Array(uniformData);
+        const i32 = new Int32Array(uniformData);
+        const u32 = new Uint32Array(uniformData);
+        f32[0] = rhoFactor;
+        f32[1] = radialNorm;
+        f32[2] = angularNorm;
+        f32[3] = maxR;
+        f32[4] = probMax;
+        f32[5] = maxAmp;
+        i32[8] = n;
+        i32[9] = l;
+        i32[10] = m;
+        i32[11] = absM;
+        u32[12] = total;
+        u32[13] = seed;
+        return uniformData;
+      }
+
+      async function generateOrbitalGPU({
+        nValue,
+        lValue,
+        mValue,
+        absM,
+        rhoFactor,
+        radialNorm,
+        angularNorm,
+        maxR,
+        probMax,
+        maxAmp,
+        numPoints,
+      }) {
+        const points = new Float32Array(numPoints * 3);
+        const colors = new Float32Array(numPoints * 3);
+        let acceptedPoints = 0;
+        let attempts = 0;
+        const batchSize = Math.min(
+          Math.max(minBatchSize, Math.ceil(numPoints * 0.1)),
+          maxBatchSize,
+        );
+        const seedBase =
+          (crypto.getRandomValues(new Uint32Array(1))[0] +
+            (Date.now() & 0xffffffff)) >>
+          0;
+        let lastStatusUpdate = performance.now();
+        const uniformData = buildUniformData({
+          rhoFactor,
+          radialNorm,
+          angularNorm,
+          maxR,
+          probMax,
+          maxAmp,
+          n: nValue,
+          l: lValue,
+          m: mValue,
+          absM,
+          total: 0,
+          seed: 0,
+        });
+        const u32 = new Uint32Array(uniformData);
+        while (acceptedPoints < numPoints) {
+          const total = batchSize;
+          u32[12] = total;
+          u32[13] = (seedBase + attempts) >>> 0;
+          const { positions, colors: batchColors } = await runGpuBatch(
+            total,
+            uniformData,
+          );
+          for (let i = 0; i < total && acceptedPoints < numPoints; i++) {
+            const base = i * 4;
+            if (positions[base + 3] > 0.5) {
+              const outBase = acceptedPoints * 3;
+              points[outBase] = positions[base];
+              points[outBase + 1] = positions[base + 1];
+              points[outBase + 2] = positions[base + 2];
+              colors[outBase] = batchColors[base];
+              colors[outBase + 1] = batchColors[base + 1];
+              colors[outBase + 2] = batchColors[base + 2];
+              acceptedPoints++;
+            }
+          }
+          attempts += total;
+          const now = performance.now();
+          if (now - lastStatusUpdate > 200) {
+            statusDiv.textContent = `WebGPU 生成中: ${acceptedPoints.toLocaleString()} / ${numPoints.toLocaleString()}`;
+            lastStatusUpdate = now;
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+          }
+        }
+        const finalPoints = points.subarray(0, acceptedPoints * 3);
+        const finalColors = colors.subarray(0, acceptedPoints * 3);
+        updatePointsGeometry(finalPoints, finalColors);
+        statusDiv.textContent = `目标: ${numPoints.toLocaleString()}点, 生成: ${acceptedPoints.toLocaleString()}点`;
+      }
+
+      function generateOrbitalCPU({
+        waveFunction,
+        maxR,
+        probMax,
+        maxAmp,
+        numPoints,
+      }) {
+        const points = [];
+        const colors = [];
+        const tempColor = new THREE.Color();
+        let acceptedPoints = 0;
+        while (acceptedPoints < numPoints) {
+          const u = Math.random();
+          const v = Math.random();
+          const w = Math.random();
+          const r = maxR * Math.cbrt(u);
+          const theta = Math.acos(2 * v - 1);
+          const phi = 2 * Math.PI * w;
+          const x = r * Math.sin(theta) * Math.cos(phi);
+          const y = r * Math.sin(theta) * Math.sin(phi);
+          const z = r * Math.cos(theta);
+          const psi = waveFunction(r, theta, phi);
+          const prob = psi * psi;
+          const randomThreshold = Math.random() * probMax;
+          if (randomThreshold < prob) {
+            points.push(x, y, z);
+            const t = psi / maxAmp;
+            const alpha = (t + 1) / 2;
+            tempColor.lerpColors(colorNegative, colorPositive, alpha);
+            colors.push(tempColor.r, tempColor.g, tempColor.b);
+            acceptedPoints++;
+          }
+        }
+        updatePointsGeometry(points, colors);
+        statusDiv.textContent = `目标: ${numPoints.toLocaleString()}点, 生成: ${acceptedPoints.toLocaleString()}点`;
+      }
+
+      async function generateOrbital() {
+        if (generating) {
+          return;
+        }
+        generating = true;
+        generateButton.disabled = true;
+        statusDiv.textContent = "正在生成...";
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        const nValue = Number.parseInt(
+          document.getElementById("n-input").value,
+          10,
+        );
+        const lValue = Number.parseInt(
+          document.getElementById("l-input").value,
+          10,
+        );
+        const mValue = Number.parseInt(
+          document.getElementById("m-input").value,
+          10,
+        );
+        if (
+          Number.isNaN(nValue) ||
+          Number.isNaN(lValue) ||
+          Number.isNaN(mValue)
+        ) {
+          statusDiv.textContent = "错误：请输入有效的量子数。";
+          generating = false;
+          generateButton.disabled = false;
+          return;
+        }
+        if (nValue < 1 || lValue < 0 || lValue >= nValue) {
+          statusDiv.textContent = "错误：量子数应满足 n>=1 且 0<=l<n。";
+          generating = false;
+          generateButton.disabled = false;
+          return;
+        }
+        if (Math.abs(mValue) > lValue) {
+          statusDiv.textContent = "错误：量子数应满足 |m|<=l。";
+          generating = false;
+          generateButton.disabled = false;
+          return;
+        }
+        const numPoints = Number.parseInt(
+          document.getElementById("count-input").value,
+          10,
+        );
+        if (!Number.isFinite(numPoints) || numPoints <= 0) {
+          statusDiv.textContent = "错误：请输入有效的点云数量。";
+          generating = false;
+          generateButton.disabled = false;
+          return;
+        }
+        const waveFunction = createWaveFunction(nValue, lValue, mValue);
+        const maxR = estimateMaxRadius(nValue);
+        const probMax = estimateProbMax(
+          nValue,
+          lValue,
+          mValue,
+          maxR,
+          waveFunction,
+        );
+        if (!Number.isFinite(probMax) || probMax <= 0) {
+          console.error("无法计算轨道上限:", nValue, lValue, mValue);
+          statusDiv.textContent = "错误：无法计算轨道幅值上限。";
+          generating = false;
+          generateButton.disabled = false;
+          return;
+        }
+        const maxAmp = Math.sqrt(probMax);
+        const { absM, rhoFactor, radialNorm, angularNorm } =
+          computeNormalization(nValue, lValue, mValue);
+        const webGpuReady = await initWebGPU();
+        try {
+          if (webGpuReady) {
+            statusDiv.textContent = "正在使用 WebGPU 生成...";
+            await generateOrbitalGPU({
+              nValue,
+              lValue,
+              mValue,
+              absM,
+              rhoFactor,
+              radialNorm,
+              angularNorm,
+              maxR,
+              probMax,
+              maxAmp,
+              numPoints,
+            });
+          } else {
+            statusDiv.textContent =
+              "当前浏览器不支持 WebGPU，已回退到 CPU 生成。";
+            generateOrbitalCPU({
+              waveFunction,
+              maxR,
+              probMax,
+              maxAmp,
+              numPoints,
+            });
+          }
+        } catch (error) {
+          console.error("WebGPU 生成失败:", error);
+          statusDiv.textContent = "WebGPU 生成失败，已回退到 CPU。";
+          generateOrbitalCPU({
+            waveFunction,
+            maxR,
+            probMax,
+            maxAmp,
+            numPoints,
+          });
+        } finally {
+          generating = false;
+          generateButton.disabled = false;
+        }
+      }
+      init();
+      animate();
+    </script>
+  </body>
+</html>
